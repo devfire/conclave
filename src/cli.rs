@@ -10,6 +10,9 @@ pub enum LLMBackend {
     /// Anthropic Claude models
     #[value(name = "anthropic")]
     Anthropic,
+    /// Google Gemini models
+    #[value(name = "gemini")]
+    Google,
     /// Local models via Ollama
     #[value(name = "local")]
     Local,
@@ -20,6 +23,7 @@ impl std::fmt::Display for LLMBackend {
         match self {
             LLMBackend::OpenAI => write!(f, "openai"),
             LLMBackend::Anthropic => write!(f, "anthropic"),
+            LLMBackend::Google => write!(f, "google"),
             LLMBackend::Local => write!(f, "local"),
         }
     }
@@ -191,6 +195,7 @@ impl AgentArgs {
         match self.llm_backend {
             LLMBackend::OpenAI => std::env::var("OPENAI_API_KEY").ok(),
             LLMBackend::Anthropic => std::env::var("ANTHROPIC_API_KEY").ok(),
+            LLMBackend::Google => std::env::var("GOOGLE_API_KEY").ok(),
             LLMBackend::Local => None, // Local models typically don't need API keys
         }
     }
