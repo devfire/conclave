@@ -1,7 +1,6 @@
 use clap::Parser;
 
 mod cli;
-mod llm;
 mod message;
 mod network;
 

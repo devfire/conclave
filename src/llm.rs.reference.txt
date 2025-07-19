@@ -1,0 +1,479 @@
+use async_trait::async_trait;
+use reqwest::{Client, header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE}};
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
+use thiserror::Error;
+use tokio::time::timeout;
+
+use crate::cli::{AgentArgs, LLMBackend as LLMBackendType};
+
+/// Errors that can occur during LLM operations
+#[derive(Error, Debug)]
+pub enum LLMError {
+    #[error("Configuration error: {0}")]
+    Configuration(String),
+    
+    #[error("API error: {0}")]
+    Api(String),
+    
+    #[error("Network error: {0}")]
+    Network(String),
+    
+    #[error("Timeout error: operation took longer than {timeout_seconds}s")]
+    Timeout { timeout_seconds: u64 },
+    
+    #[error("Authentication error: {0}")]
+    Authentication(String),
+    
+    #[error("Rate limit exceeded: {0}")]
+    RateLimit(String),
+    
+    #[error("Invalid response: {0}")]
+    InvalidResponse(String),
+}
+
+/// Configuration for LLM backend
+#[derive(Debug, Clone)]
+pub struct LLMConfig {
+    pub backend_type: LLMBackendType,
+    pub model: String,
+    pub api_key: Option<String>,
+    pub endpoint: Option<String>,
+    pub timeout_seconds: u64,
+    pub max_retries: u32,
+}
+
+impl From<&AgentArgs> for LLMConfig {
+    fn from(args: &AgentArgs) -> Self {
+        Self {
+            backend_type: args.llm_backend.clone(),
+            model: args.model.clone(),
+            api_key: args.get_api_key(),
+            endpoint: args.endpoint.clone(),
+            timeout_seconds: args.timeout_seconds,
+            max_retries: args.max_retries,
+        }
+    }
+}
+
+/// Context for message processing
+#[derive(Debug, Clone)]
+pub struct MessageContext {
+    pub sender_id: String,
+    pub timestamp: std::time::SystemTime,
+    pub conversation_history: Vec<crate::message::AgentMessage>,
+}
+
+impl MessageContext {
+    pub fn new() -> Self {
+        Self {
+            sender_id: String::new(),
+            timestamp: std::time::SystemTime::now(),
+            conversation_history: Vec::new(),
+        }
+    }
+    
+    pub fn with_sender(sender_id: String) -> Self {
+        Self {
+            sender_id,
+            timestamp: std::time::SystemTime::now(),
+            conversation_history: Vec::new(),
+        }
+    }
+}
+
+/// Trait for LLM backend implementations
+#[async_trait]
+pub trait LLMBackendTrait {
+    async fn generate_response(&self, message_content: &str, context: &MessageContext) -> Result<String, LLMError>;
+    async fn health_check(&self) -> Result<(), LLMError>;
+}
+
+/// Main LLM backend struct using HTTP client
+pub struct LLMBackend {
+    client: Client,
+    config: LLMConfig,
+}
+
+impl LLMBackend {
+    /// Create a new LLM backend instance
+    pub async fn new(config: LLMConfig) -> Result<Self, LLMError> {
+        // Validate configuration
+        Self::validate_config(&config)?;
+        
+        // Initialize aide client based on backend type
+        let aide = Self::create_aide_client(&config).await?;
+        
+        Ok(Self { aide, config })
+    }
+    
+    /// Validate the LLM configuration
+    fn validate_config(config: &LLMConfig) -> Result<(), LLMError> {
+        // Check if API key is required and present
+        match config.backend_type {
+            LLMBackendType::OpenAI | LLMBackendType::Anthropic => {
+                if config.api_key.is_none() {
+                    return Err(LLMError::Configuration(format!(
+                        "API key is required for {} backend. Set via --api-key or environment variable",
+                        config.backend_type
+                    )));
+                }
+            }
+            LLMBackendType::Local => {
+                // Local models typically don't require API keys
+            }
+        }
+        
+        // Validate model name
+        if config.model.trim().is_empty() {
+            return Err(LLMError::Configuration("Model name cannot be empty".to_string()));
+        }
+        
+        // Validate timeout
+        if config.timeout_seconds == 0 || config.timeout_seconds > 300 {
+            return Err(LLMError::Configuration(
+                "Timeout must be between 1 and 300 seconds".to_string()
+            ));
+        }
+        
+        // Validate max retries
+        if config.max_retries > 10 {
+            return Err(LLMError::Configuration(
+                "Max retries cannot exceed 10".to_string()
+            ));
+        }
+        
+        Ok(())
+    }
+    
+    /// Create aide client based on configuration
+    async fn create_aide_client(config: &LLMConfig) -> Result<Aide, LLMError> {
+        let mut aide_builder = Aide::builder();
+        
+        // Configure based on backend type
+        match config.backend_type {
+            LLMBackendType::OpenAI => {
+                aide_builder = aide_builder.openai();
+                if let Some(api_key) = &config.api_key {
+                    aide_builder = aide_builder.api_key(api_key);
+                }
+                if let Some(endpoint) = &config.endpoint {
+                    aide_builder = aide_builder.base_url(endpoint);
+                }
+            }
+            LLMBackendType::Anthropic => {
+                aide_builder = aide_builder.anthropic();
+                if let Some(api_key) = &config.api_key {
+                    aide_builder = aide_builder.api_key(api_key);
+                }
+                if let Some(endpoint) = &config.endpoint {
+                    aide_builder = aide_builder.base_url(endpoint);
+                }
+            }
+            LLMBackendType::Local => {
+                // Configure for local models (e.g., Ollama)
+                let base_url = config.endpoint.as_deref().unwrap_or("http://localhost:11434");
+                aide_builder = aide_builder.ollama().base_url(base_url);
+            }
+        }
+        
+        // Set timeout
+        aide_builder = aide_builder.timeout(Duration::from_secs(config.timeout_seconds));
+        
+        // Build the aide client
+        aide_builder.build().map_err(|e| {
+            LLMError::Configuration(format!("Failed to create aide client: {}", e))
+        })
+    }
+    
+    /// Execute operation with retry logic
+    async fn execute_with_retry<F, T>(&self, operation: F) -> Result<T, LLMError>
+    where
+        F: Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T, LLMError>> + Send>> + Send + Sync,
+    {
+        let mut last_error = LLMError::Configuration("No attempts made".to_string());
+        
+        for attempt in 0..=self.config.max_retries {
+            match operation().await {
+                Ok(result) => return Ok(result),
+                Err(error) => {
+                    last_error = error;
+                    
+                    // Don't retry on certain error types
+                    match &last_error {
+                        LLMError::Authentication(_) | LLMError::Configuration(_) => {
+                            return Err(last_error);
+                        }
+                        _ => {}
+                    }
+                    
+                    // Don't sleep after the last attempt
+                    if attempt < self.config.max_retries {
+                        let delay = Duration::from_millis(1000 * (2_u64.pow(attempt)));
+                        let max_delay = Duration::from_secs(30);
+                        let actual_delay = std::cmp::min(delay, max_delay);
+                        
+                        tracing::warn!(
+                            "LLM request failed (attempt {}/{}), retrying in {:?}: {}",
+                            attempt + 1,
+                            self.config.max_retries + 1,
+                            actual_delay,
+                            last_error
+                        );
+                        
+                        tokio::time::sleep(actual_delay).await;
+                    }
+                }
+            }
+        }
+        
+        Err(last_error)
+    }
+}
+
+#[async_trait]
+impl LLMBackendTrait for LLMBackend {
+    /// Generate a response to the given message content
+    async fn generate_response(&self, message_content: &str, context: &MessageContext) -> Result<String, LLMError> {
+        let config = self.config.clone();
+        let aide = self.aide.clone();
+        let message_content = message_content.to_string();
+        let context = context.clone();
+        
+        self.execute_with_retry(move || {
+            let aide = aide.clone();
+            let config = config.clone();
+            let message_content = message_content.clone();
+            let context = context.clone();
+            
+            Box::pin(async move {
+                // Create the prompt with context
+                let prompt = Self::create_prompt(&message_content, &context);
+                
+                // Execute with timeout
+                let response_future = async {
+                    aide.chat()
+                        .model(&config.model)
+                        .user(&prompt)
+                        .execute()
+                        .await
+                        .map_err(|e| LLMError::Api(format!("API request failed: {}", e)))?
+                        .content()
+                        .ok_or_else(|| LLMError::InvalidResponse("Empty response from LLM".to_string()))
+                        .map(|s| s.to_string())
+                };
+                
+                timeout(Duration::from_secs(config.timeout_seconds), response_future)
+                    .await
+                    .map_err(|_| LLMError::Timeout { timeout_seconds: config.timeout_seconds })?
+            })
+        }).await
+    }
+    
+    /// Perform a health check on the LLM backend
+    async fn health_check(&self) -> Result<(), LLMError> {
+        let config = self.config.clone();
+        let aide = self.aide.clone();
+        
+        self.execute_with_retry(move || {
+            let aide = aide.clone();
+            let config = config.clone();
+            
+            Box::pin(async move {
+                // Simple health check with a minimal request
+                let health_check_future = async {
+                    aide.chat()
+                        .model(&config.model)
+                        .user("Hello")
+                        .execute()
+                        .await
+                        .map_err(|e| LLMError::Api(format!("Health check failed: {}", e)))?;
+                    
+                    Ok(())
+                };
+                
+                timeout(Duration::from_secs(config.timeout_seconds), health_check_future)
+                    .await
+                    .map_err(|_| LLMError::Timeout { timeout_seconds: config.timeout_seconds })?
+            })
+        }).await
+    }
+}
+
+impl LLMBackend {
+    /// Create a prompt with context information
+    fn create_prompt(message_content: &str, context: &MessageContext) -> String {
+        let mut prompt = String::new();
+        
+        // Add system context
+        prompt.push_str("You are an AI agent in a swarm of autonomous agents communicating via multicast. ");
+        prompt.push_str("Respond thoughtfully and concisely to the following message from another agent.\n\n");
+        
+        // Add conversation history if available
+        if !context.conversation_history.is_empty() {
+            prompt.push_str("Recent conversation history:\n");
+            for msg in context.conversation_history.iter().take(5) { // Limit to last 5 messages
+                prompt.push_str(&format!("[{}]: {}\n", msg.sender_id, msg.content));
+            }
+            prompt.push('\n');
+        }
+        
+        // Add the current message
+        prompt.push_str("Current message to respond to:\n");
+        prompt.push_str(message_content);
+        
+        prompt
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::LLMBackend as LLMBackendType;
+    
+    #[test]
+    fn test_llm_config_validation_valid() {
+        let config = LLMConfig {
+            backend_type: LLMBackendType::OpenAI,
+            model: "gpt-3.5-turbo".to_string(),
+            api_key: Some("test-key".to_string()),
+            endpoint: None,
+            timeout_seconds: 30,
+            max_retries: 3,
+        };
+        
+        assert!(LLMBackend::validate_config(&config).is_ok());
+    }
+    
+    #[test]
+    fn test_llm_config_validation_missing_api_key() {
+        let config = LLMConfig {
+            backend_type: LLMBackendType::OpenAI,
+            model: "gpt-3.5-turbo".to_string(),
+            api_key: None,
+            endpoint: None,
+            timeout_seconds: 30,
+            max_retries: 3,
+        };
+        
+        let result = LLMBackend::validate_config(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("API key is required"));
+    }
+    
+    #[test]
+    fn test_llm_config_validation_local_no_api_key() {
+        let config = LLMConfig {
+            backend_type: LLMBackendType::Local,
+            model: "llama2".to_string(),
+            api_key: None,
+            endpoint: None,
+            timeout_seconds: 30,
+            max_retries: 3,
+        };
+        
+        assert!(LLMBackend::validate_config(&config).is_ok());
+    }
+    
+    #[test]
+    fn test_llm_config_validation_empty_model() {
+        let config = LLMConfig {
+            backend_type: LLMBackendType::OpenAI,
+            model: "".to_string(),
+            api_key: Some("test-key".to_string()),
+            endpoint: None,
+            timeout_seconds: 30,
+            max_retries: 3,
+        };
+        
+        let result = LLMBackend::validate_config(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Model name cannot be empty"));
+    }
+    
+    #[test]
+    fn test_llm_config_validation_invalid_timeout() {
+        let config = LLMConfig {
+            backend_type: LLMBackendType::OpenAI,
+            model: "gpt-3.5-turbo".to_string(),
+            api_key: Some("test-key".to_string()),
+            endpoint: None,
+            timeout_seconds: 0,
+            max_retries: 3,
+        };
+        
+        let result = LLMBackend::validate_config(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Timeout must be between"));
+    }
+    
+    #[test]
+    fn test_llm_config_validation_excessive_retries() {
+        let config = LLMConfig {
+            backend_type: LLMBackendType::OpenAI,
+            model: "gpt-3.5-turbo".to_string(),
+            api_key: Some("test-key".to_string()),
+            endpoint: None,
+            timeout_seconds: 30,
+            max_retries: 15,
+        };
+        
+        let result = LLMBackend::validate_config(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Max retries cannot exceed"));
+    }
+    
+    #[test]
+    fn test_message_context_new() {
+        let context = MessageContext::new();
+        assert!(context.sender_id.is_empty());
+        assert!(context.conversation_history.is_empty());
+    }
+    
+    #[test]
+    fn test_message_context_with_sender() {
+        let sender_id = "test-agent".to_string();
+        let context = MessageContext::with_sender(sender_id.clone());
+        assert_eq!(context.sender_id, sender_id);
+        assert!(context.conversation_history.is_empty());
+    }
+    
+    #[test]
+    fn test_create_prompt_basic() {
+        let message_content = "Hello, how are you?";
+        let context = MessageContext::new();
+        
+        let prompt = LLMBackend::create_prompt(message_content, &context);
+        
+        assert!(prompt.contains("AI agent in a swarm"));
+        assert!(prompt.contains(message_content));
+        assert!(!prompt.contains("Recent conversation history"));
+    }
+    
+    #[test]
+    fn test_create_prompt_with_history() {
+        use crate::message::AgentMessage;
+        
+        let message_content = "What do you think?";
+        let mut context = MessageContext::new();
+        
+        // Add some conversation history
+        context.conversation_history.push(AgentMessage {
+            sender_id: "agent-1".to_string(),
+            timestamp: 1234567890,
+            content: "Hello everyone!".to_string(),
+        });
+        context.conversation_history.push(AgentMessage {
+            sender_id: "agent-2".to_string(),
+            timestamp: 1234567891,
+            content: "Hi there!".to_string(),
+        });
+        
+        let prompt = LLMBackend::create_prompt(message_content, &context);
+        
+        assert!(prompt.contains("Recent conversation history"));
+        assert!(prompt.contains("[agent-1]: Hello everyone!"));
+        assert!(prompt.contains("[agent-2]: Hi there!"));
+        assert!(prompt.contains(message_content));
+    }
+}
