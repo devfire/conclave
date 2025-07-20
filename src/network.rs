@@ -162,20 +162,7 @@ impl NetworkManager {
         Ok(socket.into())
     }
 
-    /// Get the agent ID associated with this network manager
-    pub fn agent_id(&self) -> &str {
-        &self.agent_id
-    }
 
-    /// Get the multicast address being used
-    pub fn multicast_address(&self) -> SocketAddr {
-        self.multicast_addr
-    }
-
-    /// Get the network configuration
-    pub fn config(&self) -> &NetworkConfig {
-        &self.config
-    }
 
     /// Send a message to the multicast group
     pub async fn send_message(&self, message: &AgentMessage) -> Result<(), NetworkError> {
@@ -251,35 +238,7 @@ impl NetworkManager {
         }
     }
 
-    /// Start an async message reception loop that calls the provided handler for each message
-    pub async fn start_message_loop<F, Fut>(&self, mut handler: F) -> Result<(), NetworkError>
-    where
-        F: FnMut(AgentMessage) -> Fut + Send,
-        Fut: std::future::Future<Output = ()> + Send,
-    {
-        tracing::info!(
-            "Starting message reception loop for agent {} on {}",
-            self.agent_id,
-            self.multicast_addr
-        );
 
-        loop {
-            match self.receive_message().await {
-                Ok(message) => {
-                    // Call the handler with the received message
-                    handler(message).await;
-                }
-                Err(NetworkError::DeserializationError(_)) => {
-                    // Log and continue for malformed messages
-                    continue;
-                }
-                Err(e) => {
-                    tracing::error!("Message reception loop error: {}", e);
-                    return Err(e);
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -307,10 +266,6 @@ mod tests {
 
         let result = NetworkManager::new(config, "test-agent".to_string()).await;
         assert!(result.is_ok());
-
-        let manager = result.unwrap();
-        assert_eq!(manager.agent_id(), "test-agent");
-        assert_eq!(manager.multicast_address().port(), 8080);
     }
 
     #[tokio::test]
@@ -521,66 +476,5 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_message_loop_with_handler() {
-        let config = NetworkConfig {
-            multicast_address: "239.255.255.250:8085".parse().unwrap(),
-            interface: None,
-            buffer_size: 1024,
-            timeout: Duration::from_secs(1),
-        };
 
-        let sender = NetworkManager::new(config.clone(), "test-loop-sender".to_string())
-            .await
-            .unwrap();
-        let receiver = NetworkManager::new(config, "test-loop-receiver".to_string())
-            .await
-            .unwrap();
-
-        // Shared counter for received messages
-        let received_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let counter_clone = received_count.clone();
-
-        // Start message loop in a separate task
-        let loop_task = tokio::spawn(async move {
-            let handler = {
-                let counter = counter_clone.clone();
-                move |_message: AgentMessage| {
-                    let counter = counter.clone();
-                    async move {
-                        counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    }
-                }
-            };
-
-            // Run the loop with a timeout to prevent infinite execution
-            tokio::time::timeout(
-                tokio::time::Duration::from_secs(2),
-                receiver.start_message_loop(handler),
-            )
-            .await
-        });
-
-        // Send a few test messages
-        for i in 0..3 {
-            let message = crate::message::AgentMessage::new(
-                "test-loop-sender".to_string(),
-                format!("Test message {}", i),
-            );
-
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            let _ = sender.send_message(&message).await;
-        }
-
-        // Wait for the loop to timeout
-        let _ = loop_task.await;
-
-        // Verify that at least some messages were received
-        let final_count = received_count.load(std::sync::atomic::Ordering::SeqCst);
-        assert!(
-            final_count > 0,
-            "Expected to receive at least one message, got {}",
-            final_count
-        );
-    }
 }
