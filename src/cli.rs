@@ -11,7 +11,7 @@ pub enum LLMBackend {
     #[value(name = "anthropic")]
     Anthropic,
     /// Google Gemini models
-    #[value(name = "gemini")]
+    #[value(name = "google")]
     Google,
     /// Local models via Ollama
     #[value(name = "local")]

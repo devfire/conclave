@@ -18,6 +18,7 @@ async-trait = "0.1"
 socket2 = "0.5"
 clap = { version = "4.0", features = ["derive"] }
 thiserror = "1.0"
+llm = { version = "1.2.4", features = ["openai", "anthropic", "ollama", "google"] }
 
 [build-dependencies]
 prost-build = "0.12"

@@ -13,7 +13,7 @@ impl AgentMessage {
     pub fn new(sender_id: String, content: String) -> Self {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("Failed to get current time")
             .as_secs() as i64;
 
         Self {
