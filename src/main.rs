@@ -3,6 +3,7 @@ use clap::Parser;
 mod cli;
 pub mod llm;
 mod message;
+mod message_handler;
 mod network;
 use crate::{cli::AgentArgs, message::AgentMessage, network::NetworkConfig};
 use std::time::Duration;
