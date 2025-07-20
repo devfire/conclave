@@ -1,7 +1,7 @@
 // Import required modules from the LLM library
 use llm::{
     LLMProvider,
-    builder::{LLMBackend as ProviderBackend, LLMBuilder},
+    builder::{LLMBackend, LLMBuilder},
     chat::ChatMessage,
     error::LLMError,
 };
@@ -22,10 +22,10 @@ impl LLMModule {
 
         // Map project backend to provider backend
         let backend = match args.llm_backend {
-            CliBackend::OpenAI => ProviderBackend::OpenAI,
-            CliBackend::Anthropic => ProviderBackend::Anthropic,
-            CliBackend::Google => ProviderBackend::Google,
-            CliBackend::Local => ProviderBackend::Ollama,
+            CliBackend::OpenAI => LLMBackend::OpenAI,
+            CliBackend::Anthropic => LLMBackend::Anthropic,
+            CliBackend::Google => LLMBackend::Google,
+            CliBackend::Local => LLMBackend::Ollama,
         };
 
         builder = builder.backend(backend);

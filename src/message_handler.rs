@@ -17,21 +17,6 @@ pub enum MessageHandlerError {
     ChannelClosed,
 }
 
-/// Configuration for the message channel
-#[derive(Debug, Clone)]
-pub struct ChannelConfig {
-    /// Buffer size for the MPSC channel
-    pub buffer_size: usize,
-}
-
-impl Default for ChannelConfig {
-    fn default() -> Self {
-        Self {
-            buffer_size: 1000, // Default buffer size for message queue
-        }
-    }
-}
-
 /// Message handler that manages MPSC channel communication between UDP intake and LLM processing
 pub struct MessageHandler {
     /// Agent ID for filtering self-messages
@@ -40,25 +25,26 @@ pub struct MessageHandler {
     message_sender: mpsc::Sender<AgentMessage>,
     /// Receiver for LLM processing thread to receive messages
     message_receiver: Arc<Mutex<mpsc::Receiver<AgentMessage>>>,
-    /// Channel configuration
-    config: ChannelConfig,
+
+    /// Buffer size for the message channel
+    buffer_size: usize,
 }
 
 impl MessageHandler {
     /// Create a new MessageHandler with the specified agent ID and configuration
-    pub fn new(agent_id: String, config: ChannelConfig) -> Self {
-        let (sender, receiver) = mpsc::channel(config.buffer_size);
+    pub fn new(agent_id: String, buffer_size: usize) -> Self {
+        let (sender, receiver) = mpsc::channel(buffer_size);
 
         debug!(
             "Created message handler for agent '{}' with buffer size {}",
-            agent_id, config.buffer_size
+            agent_id, buffer_size
         );
 
         Self {
             agent_id,
             message_sender: sender,
             message_receiver: Arc::new(Mutex::new(receiver)),
-            config,
+            buffer_size,
         }
     }
 
@@ -131,42 +117,6 @@ impl MessageHandler {
         }
     }
 
-    /// Try to receive a message without blocking (used by LLM processing thread)
-    /// This method includes self-message filtering
-    pub async fn try_receive_message(&self) -> Result<Option<AgentMessage>, MessageHandlerError> {
-        let mut receiver = self.message_receiver.lock().await;
-
-        loop {
-            match receiver.try_recv() {
-                Ok(message) => {
-                    // Filter out self-messages to prevent self-replies
-                    if message.sender_id == self.agent_id {
-                        debug!(
-                            "Filtered out self-message from agent '{}' (non-blocking)",
-                            message.sender_id
-                        );
-                        continue; // Skip self-messages and continue checking
-                    }
-
-                    debug!(
-                        "Received message from '{}' for processing by agent '{}' (non-blocking)",
-                        message.sender_id, self.agent_id
-                    );
-                    return Ok(Some(message));
-                }
-                Err(mpsc::error::TryRecvError::Empty) => {
-                    return Ok(None); // No messages available
-                }
-                Err(mpsc::error::TryRecvError::Disconnected) => {
-                    let error_msg =
-                        format!("Message channel disconnected for agent '{}'", self.agent_id);
-                    error!("{}", error_msg);
-                    return Err(MessageHandlerError::ChannelClosed);
-                }
-            }
-        }
-    }
-
 }
 
 #[cfg(test)]
@@ -175,8 +125,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_channel_buffer_overflow() {
-        let small_config = ChannelConfig { buffer_size: 2 };
-        let handler = MessageHandler::new("overflow-agent".to_string(), small_config);
+        // Create a message handler with a small buffer size
+        let handler = MessageHandler::new("overflow-agent".to_string(), 2);
 
         // Fill the buffer
         for i in 0..2 {

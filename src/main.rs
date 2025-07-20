@@ -6,10 +6,7 @@ mod message;
 mod message_handler;
 mod network;
 use crate::{
-    cli::AgentArgs,
-    message::AgentMessage,
-    message_handler::{ChannelConfig, MessageHandler},
-    network::NetworkConfig,
+    cli::AgentArgs, message::AgentMessage, message_handler::MessageHandler, network::NetworkConfig,
 };
 use std::{sync::Arc, time::Duration};
 use tokio::task::JoinHandle;
@@ -63,12 +60,10 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(network::NetworkManager::new(network_config, args.agent_id.clone()).await?);
     info!("Network manager initialized successfully");
 
-    // Create message handler with MPSC channel
-    let channel_config = ChannelConfig {
-        buffer_size: 1000, // Buffer up to 1000 messages
-    };
-    let message_handler = Arc::new(MessageHandler::new(args.agent_id.clone(), channel_config));
-    info!("Message handler initialized with MPSC channel");
+    let buffer_size = 100; // Buffer up to 1000 messages
+
+    let message_handler = Arc::new(MessageHandler::new(args.agent_id.clone(), buffer_size));
+    debug!("Message handler initialized with MPSC channel");
 
     // Spawn UDP message intake task (Task 6.1)
     let udp_intake_handle =
@@ -128,6 +123,9 @@ async fn spawn_udp_intake_task(
                         message.sender_id,
                         message.content.chars().take(50).collect::<String>()
                     );
+
+                    // Introduce an artificial delay to simulate processing time
+                    tokio::time::sleep(Duration::from_millis(5000)).await;
 
                     // Send message to MPSC channel (non-blocking)
                     if let Err(e) = message_handler.try_send_message(message.clone()) {
