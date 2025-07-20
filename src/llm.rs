@@ -5,6 +5,7 @@ use llm::{
     chat::ChatMessage,
     error::LLMError,
 };
+use tracing::info;
 
 // Import project-specific types
 use crate::cli::{AgentArgs, LLMBackend as CliBackend};
@@ -34,13 +35,20 @@ impl LLMModule {
             builder = builder.api_key(key);
         }
 
+        info!("Personality: {}", args.personality);
+
         // Configure common parameters
         builder = builder
             .model(&args.model)
             .timeout_seconds(args.timeout_seconds)
             .stream(false)
             .temperature(0.7)
-            .system("Keep responses concise.");
+            // set the system message for the LLM to args.personality and default to "Keep responses concise." if not provided
+            .system(if args.personality.is_empty() {
+                "Keep responses concise."
+            } else {
+                &args.personality
+            });
 
         // Set custom endpoint if provided
         if let Some(url) = &args.endpoint {
@@ -59,12 +67,6 @@ impl LLMModule {
     ) -> Result<String, LLMError> {
         let response = self.provider.chat(messages).await?;
         Ok(response.to_string())
-    }
-
-    /// Get the configured model name
-    pub fn model_name(&self) -> &str {
-        // This is a placeholder - the actual implementation would depend on the LLM provider
-        "configured-model"
     }
 
     /// Create a user ChatMessage from content

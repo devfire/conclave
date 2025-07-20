@@ -165,7 +165,7 @@ async fn spawn_llm_processing_task(
     tokio::spawn(async move {
         info!("Starting LLM processing task for agent '{}'", agent_id);
 
-        // Create response message
+        // Bootstrap the conversation with a greeting message, otherwise everyone is waiting for the first message
         let response_message = AgentMessage::new(agent_id.clone(), "Hi".to_string());
 
         // Broadcast response via network manager
@@ -177,7 +177,7 @@ async fn spawn_llm_processing_task(
         loop {
             match message_handler.receive_message().await {
                 Ok(message) => {
-                    info!(
+                    debug!(
                         "LLM processing received message from '{}' with content: '{}'",
                         message.sender_id,
                         message.content // message.content.chars().take(50).collect::<String>()
@@ -192,10 +192,9 @@ async fn spawn_llm_processing_task(
                         .await
                     {
                         Ok(llm_response) => {
-                            info!(
+                            debug!(
                                 "LLM generated response for message from '{}': '{}'",
-                                message.sender_id,
-                                llm_response
+                                message.sender_id, llm_response
                             );
                             llm_response
                         }
@@ -211,11 +210,12 @@ async fn spawn_llm_processing_task(
                             )
                         }
                     };
+                    println!("{}: {}", message.sender_id, message.content);
+                    println!("{}: {}", agent_id, response_content);
 
-                    info!(
+                    debug!(
                         "Sending response to message from '{}': '{}'",
-                        message.sender_id,
-                        response_content.chars().take(50).collect::<String>()
+                        message.sender_id, response_content
                     );
 
                     // Create response message

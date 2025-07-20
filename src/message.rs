@@ -34,15 +34,6 @@ impl AgentMessage {
     pub fn deserialize(bytes: &[u8]) -> Result<Self, prost::DecodeError> {
         Self::decode(bytes)
     }
-
-    /// Get the age of the message in seconds
-    pub fn age_seconds(&self) -> u64 {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-        (now - self.timestamp).max(0) as u64
-    }
 }
 
 #[cfg(test)]
@@ -110,15 +101,6 @@ mod tests {
         let result = AgentMessage::deserialize(&invalid_bytes);
 
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_message_age_calculation() {
-        let message = AgentMessage::new("agent-time".to_string(), "Time test".to_string());
-
-        // Age should be very small (close to 0) for a newly created message
-        let age = message.age_seconds();
-        assert!(age <= 1); // Should be 0 or 1 second at most
     }
 
     #[test]
