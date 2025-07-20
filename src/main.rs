@@ -143,7 +143,7 @@ async fn spawn_udp_intake_task(
 /// This task receives messages from MPSC channel, filters self-messages, and generates LLM responses
 async fn spawn_llm_processing_task(
     message_handler: Arc<MessageHandler>,
-    _llm_module: llm::LLMModule,
+    llm_module: llm::LLMModule,
     network_manager: Arc<network::NetworkManager>,
     agent_id: String,
 ) -> JoinHandle<Result<(), String>> {
@@ -159,16 +159,36 @@ async fn spawn_llm_processing_task(
                         message.content.chars().take(50).collect::<String>()
                     );
 
-                    // For now, create a simple response to test the MPSC channel architecture
-                    // TODO: Integrate proper LLM response generation once the llm crate import is fixed
-                    let response_content = format!(
-                        "Agent {} received your message: '{}'", 
-                        agent_id, 
-                        message.content.chars().take(100).collect::<String>()
-                    );
+                    // Create chat messages for LLM context
+                    let chat_messages = vec![
+                        llm_module.create_user_message(&message.content),
+                    ];
+
+                    // Generate LLM response
+                    let response_content = match llm_module.generate_llm_response(&chat_messages).await {
+                        Ok(llm_response) => {
+                            info!(
+                                "LLM generated response for message from '{}': '{}'",
+                                message.sender_id,
+                                llm_response.chars().take(50).collect::<String>()
+                            );
+                            llm_response
+                        }
+                        Err(e) => {
+                            error!(
+                                "LLM failed to generate response for message from '{}': {}",
+                                message.sender_id, e
+                            );
+                            // Fallback to a simple acknowledgment if LLM fails
+                            format!(
+                                "Agent {} received your message but couldn't generate a proper response: {}", 
+                                agent_id, e
+                            )
+                        }
+                    };
 
                     info!(
-                        "Generated response for message from '{}': '{}'",
+                        "Sending response to message from '{}': '{}'",
                         message.sender_id,
                         response_content.chars().take(50).collect::<String>()
                     );

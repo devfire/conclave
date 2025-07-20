@@ -52,60 +52,24 @@ impl LLMModule {
         Ok(Self { provider })
     }
 
-    /// Generates a response based on the provided message history with retry logic
+    /// Generates a response based on the provided message history
     pub async fn generate_llm_response(
         &self,
         messages: &[ChatMessage],
     ) -> Result<String, LLMError> {
-        self.generate_llm_response_with_retries(messages, 3).await
-    }
-
-    /// Generates a response with configurable retry attempts
-    pub async fn generate_llm_response_with_retries(
-        &self,
-        messages: &[ChatMessage],
-        max_retries: u32,
-    ) -> Result<String, LLMError> {
-        let mut last_error = None;
-
-        for attempt in 0..=max_retries {
-            match self.provider.chat(messages).await {
-                Ok(response) => {
-                    if attempt > 0 {
-                        tracing::info!("LLM request succeeded on attempt {}", attempt + 1);
-                    }
-                    return Ok(response.to_string());
-                }
-                Err(e) => {
-                    last_error = Some(e);
-                    if attempt < max_retries {
-                        let delay = std::time::Duration::from_millis(1000 * (attempt + 1) as u64);
-                        tracing::warn!(
-                            "LLM request failed on attempt {}, retrying in {:?}: {}",
-                            attempt + 1,
-                            delay,
-                            last_error.as_ref().unwrap()
-                        );
-                        tokio::time::sleep(delay).await;
-                    }
-                }
-            }
-        }
-
-        // If we get here, all retries failed
-        let final_error = last_error.unwrap();
-        tracing::error!(
-            "LLM request failed after {} attempts: {}",
-            max_retries + 1,
-            final_error
-        );
-        Err(final_error)
+        let response = self.provider.chat(messages).await?;
+        Ok(response.to_string())
     }
 
     /// Get the configured model name
     pub fn model_name(&self) -> &str {
         // This is a placeholder - the actual implementation would depend on the LLM provider
         "configured-model"
+    }
+
+    /// Create a user ChatMessage from content
+    pub fn create_user_message(&self, content: &str) -> ChatMessage {
+        ChatMessage::user().content(content).build()
     }
 }
 
