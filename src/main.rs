@@ -65,5 +65,5 @@ async fn main() -> anyhow::Result<()> {
 
 async fn handle_message(message: AgentMessage) {
     // Process the message here
-    println!("Received message: {:?}", message);
+    info!("Sending {:?} to LLM.", message);
 }

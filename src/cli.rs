@@ -89,7 +89,7 @@ pub struct AgentArgs {
     #[arg(
         short = 'k',
         long = "api-key",
-        help = "API key for LLM backend (or set OPENAI_API_KEY/ANTHROPIC_API_KEY env var)",
+        help = "API key for LLM backend (or set ANTHROPIC_API_KEY/GEMINI_API_KEY env var)",
         value_name = "KEY"
     )]
     pub api_key: Option<String>,
@@ -195,7 +195,7 @@ impl AgentArgs {
         match self.llm_backend {
             LLMBackend::OpenAI => std::env::var("OPENAI_API_KEY").ok(),
             LLMBackend::Anthropic => std::env::var("ANTHROPIC_API_KEY").ok(),
-            LLMBackend::Google => std::env::var("GOOGLE_API_KEY").ok(),
+            LLMBackend::Google => std::env::var("GEMINI_API_KEY").ok(),
             LLMBackend::Local => None, // Local models typically don't need API keys
         }
     }
