@@ -10,9 +10,6 @@ pub enum MessageHandlerError {
     #[error("Channel send error: {0}")]
     ChannelSendError(String),
 
-    #[error("Channel receive error: {0}")]
-    ChannelReceiveError(String),
-
     #[error("Channel closed")]
     ChannelClosed,
 }
@@ -25,9 +22,6 @@ pub struct MessageHandler {
     message_sender: mpsc::Sender<AgentMessage>,
     /// Receiver for LLM processing thread to receive messages
     message_receiver: Arc<Mutex<mpsc::Receiver<AgentMessage>>>,
-
-    /// Buffer size for the message channel
-    buffer_size: usize,
 }
 
 impl MessageHandler {
@@ -44,7 +38,6 @@ impl MessageHandler {
             agent_id,
             message_sender: sender,
             message_receiver: Arc::new(Mutex::new(receiver)),
-            buffer_size,
         }
     }
 

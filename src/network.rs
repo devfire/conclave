@@ -1,7 +1,7 @@
 use crate::message::AgentMessage;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{Ipv4Addr, SocketAddr};
-use std::time::Duration;
+
 use thiserror::Error;
 use tokio::net::UdpSocket;
 
@@ -36,7 +36,6 @@ pub struct NetworkConfig {
     pub multicast_address: SocketAddr,
     pub interface: Option<String>,
     pub buffer_size: usize,
-    pub timeout: Duration,
 }
 
 impl Default for NetworkConfig {
@@ -45,7 +44,6 @@ impl Default for NetworkConfig {
             multicast_address: "239.255.255.250:8080".parse().unwrap(),
             interface: None,
             buffer_size: 65536, // 64KB buffer
-            timeout: Duration::from_secs(5),
         }
     }
 }
@@ -162,8 +160,6 @@ impl NetworkManager {
         Ok(socket.into())
     }
 
-
-
     /// Send a message to the multicast group
     pub async fn send_message(&self, message: &AgentMessage) -> Result<(), NetworkError> {
         // Serialize the message using protobuf
@@ -237,14 +233,11 @@ impl NetworkManager {
             }
         }
     }
-
-
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::Ipv4Addr;
 
     #[test]
     fn test_network_config_default() {
@@ -252,7 +245,6 @@ mod tests {
         assert!(config.multicast_address.ip().is_multicast());
         assert_eq!(config.multicast_address.port(), 8080);
         assert_eq!(config.buffer_size, 65536);
-        assert_eq!(config.timeout, Duration::from_secs(5));
     }
 
     #[tokio::test]
@@ -261,7 +253,6 @@ mod tests {
             multicast_address: "239.255.255.250:8080".parse().unwrap(),
             interface: None,
             buffer_size: 1024,
-            timeout: Duration::from_secs(1),
         };
 
         let result = NetworkManager::new(config, "test-agent".to_string()).await;
@@ -274,7 +265,6 @@ mod tests {
             multicast_address: "192.168.1.1:8080".parse().unwrap(), // Not multicast
             interface: None,
             buffer_size: 1024,
-            timeout: Duration::from_secs(1),
         };
 
         let result = NetworkManager::new(config, "test-agent".to_string()).await;
@@ -293,7 +283,6 @@ mod tests {
             multicast_address: "239.255.255.250:8080".parse().unwrap(),
             interface: None,
             buffer_size: 1024,
-            timeout: Duration::from_secs(1),
         };
 
         let result = NetworkManager::create_multicast_socket(&config);
@@ -306,7 +295,6 @@ mod tests {
             multicast_address: "239.255.255.250:8080".parse().unwrap(),
             interface: Some("127.0.0.1".to_string()),
             buffer_size: 1024,
-            timeout: Duration::from_secs(1),
         };
 
         let result = NetworkManager::create_multicast_socket(&config);
@@ -331,7 +319,6 @@ mod tests {
             multicast_address: "239.255.255.250:8080".parse().unwrap(),
             interface: None,
             buffer_size: 1024,
-            timeout: Duration::from_secs(1),
         };
 
         let manager = NetworkManager::new(config, "test-sender".to_string())
@@ -352,7 +339,6 @@ mod tests {
             multicast_address: "239.255.255.250:8081".parse().unwrap(), // Different port
             interface: None,
             buffer_size: 1024,
-            timeout: Duration::from_secs(1),
         };
 
         let manager = NetworkManager::new(config, "test-sender-empty".to_string())
@@ -371,7 +357,6 @@ mod tests {
             multicast_address: "239.255.255.250:8082".parse().unwrap(), // Different port
             interface: None,
             buffer_size: 1024,
-            timeout: Duration::from_secs(1),
         };
 
         let manager = NetworkManager::new(config, "test-sender-unicode".to_string())
@@ -392,7 +377,6 @@ mod tests {
             multicast_address: "239.255.255.250:8083".parse().unwrap(),
             interface: None,
             buffer_size: 1024,
-            timeout: Duration::from_secs(1),
         };
 
         // Create sender and receiver
@@ -439,7 +423,6 @@ mod tests {
             multicast_address: "239.255.255.250:8084".parse().unwrap(),
             interface: None,
             buffer_size: 1024,
-            timeout: Duration::from_secs(1),
         };
 
         let manager = NetworkManager::new(config, "test-malformed".to_string())
@@ -475,6 +458,4 @@ mod tests {
             }
         }
     }
-
-
 }

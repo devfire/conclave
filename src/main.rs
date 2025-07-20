@@ -52,7 +52,6 @@ async fn main() -> anyhow::Result<()> {
         multicast_address: args.multicast_address.clone(),
         interface: args.interface.clone(),
         buffer_size: 65536, // 64KB buffer for better performance
-        timeout: Duration::from_secs(args.timeout_seconds),
     };
 
     // Initialize network manager
