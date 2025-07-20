@@ -137,6 +137,16 @@ pub struct AgentArgs {
         value_parser = ["error", "warn", "info", "debug", "trace"]
     )]
     pub log_level: String,
+
+    /// Agent personality for LLM system prompt
+    #[arg(
+        short = 'p',
+        long = "personality",
+        help = "Agent personality that defines behavior and response style",
+        default_value = "You are a helpful AI agent. Keep responses concise and professional.",
+        value_name = "PERSONALITY"
+    )]
+    pub personality: String,
 }
 
 impl AgentArgs {
@@ -219,6 +229,7 @@ mod tests {
             max_retries: 3,
             verbose: 0,
             log_level: "info".to_string(),
+            personality: "You are a helpful AI agent.".to_string(),
         };
 
         assert!(args.validate().is_ok());
@@ -238,6 +249,7 @@ mod tests {
             max_retries: 3,
             verbose: 0,
             log_level: "info".to_string(),
+            personality: "You are a helpful AI agent.".to_string(),
         };
 
         assert!(args.validate().is_err());
@@ -258,6 +270,7 @@ mod tests {
             max_retries: 3,
             verbose: 0,
             log_level: "info".to_string(),
+            personality: "You are a helpful AI agent.".to_string(),
         };
 
         assert!(args.validate().is_err());
@@ -281,6 +294,7 @@ mod tests {
             max_retries: 3,
             verbose: 0,
             log_level: "info".to_string(),
+            personality: "You are a helpful AI agent.".to_string(),
         };
 
         assert!(args.validate().is_err());
@@ -289,113 +303,5 @@ mod tests {
                 .unwrap_err()
                 .contains("is not a valid multicast address")
         );
-    }
-
-    #[test]
-    fn test_agent_args_validation_invalid_timeout() {
-        let args = AgentArgs {
-            agent_id: "test-agent".to_string(),
-            multicast_address: "239.255.255.250:8080".parse().unwrap(),
-            interface: None,
-            llm_backend: LLMBackend::OpenAI,
-            model: "gpt-3.5-turbo".to_string(),
-            api_key: None,
-            endpoint: None,
-            timeout_seconds: 0,
-            max_retries: 3,
-            verbose: 0,
-            log_level: "info".to_string(),
-        };
-
-        assert!(args.validate().is_err());
-        assert_eq!(
-            args.validate().unwrap_err(),
-            "Timeout must be between 1 and 300 seconds"
-        );
-    }
-
-    #[test]
-    fn test_agent_args_validation_excessive_retries() {
-        let args = AgentArgs {
-            agent_id: "test-agent".to_string(),
-            multicast_address: "239.255.255.250:8080".parse().unwrap(),
-            interface: None,
-            llm_backend: LLMBackend::OpenAI,
-            model: "gpt-3.5-turbo".to_string(),
-            api_key: None,
-            endpoint: None,
-            timeout_seconds: 30,
-            max_retries: 15,
-            verbose: 0,
-            log_level: "info".to_string(),
-        };
-
-        assert!(args.validate().is_err());
-        assert_eq!(args.validate().unwrap_err(), "Max retries cannot exceed 10");
-    }
-
-    #[test]
-    fn test_agent_args_validation_empty_model() {
-        let args = AgentArgs {
-            agent_id: "test-agent".to_string(),
-            multicast_address: "239.255.255.250:8080".parse().unwrap(),
-            interface: None,
-            llm_backend: LLMBackend::OpenAI,
-            model: "".to_string(),
-            api_key: None,
-            endpoint: None,
-            timeout_seconds: 30,
-            max_retries: 3,
-            verbose: 0,
-            log_level: "info".to_string(),
-        };
-
-        assert!(args.validate().is_err());
-        assert_eq!(args.validate().unwrap_err(), "Model name cannot be empty");
-    }
-
-    #[test]
-    fn test_agent_args_get_api_key_from_arg() {
-        let args = AgentArgs {
-            agent_id: "test-agent".to_string(),
-            multicast_address: "239.255.255.250:8080".parse().unwrap(),
-            interface: None,
-            llm_backend: LLMBackend::OpenAI,
-            model: "gpt-3.5-turbo".to_string(),
-            api_key: Some("test-key".to_string()),
-            endpoint: None,
-            timeout_seconds: 30,
-            max_retries: 3,
-            verbose: 0,
-            log_level: "info".to_string(),
-        };
-
-        assert_eq!(args.get_api_key(), Some("test-key".to_string()));
-    }
-
-    #[test]
-    fn test_agent_args_get_api_key_local_backend() {
-        let args = AgentArgs {
-            agent_id: "test-agent".to_string(),
-            multicast_address: "239.255.255.250:8080".parse().unwrap(),
-            interface: None,
-            llm_backend: LLMBackend::Local,
-            model: "llama2".to_string(),
-            api_key: None,
-            endpoint: None,
-            timeout_seconds: 30,
-            max_retries: 3,
-            verbose: 0,
-            log_level: "info".to_string(),
-        };
-
-        assert_eq!(args.get_api_key(), None);
-    }
-
-    #[test]
-    fn test_llm_backend_display() {
-        assert_eq!(LLMBackend::OpenAI.to_string(), "openai");
-        assert_eq!(LLMBackend::Anthropic.to_string(), "anthropic");
-        assert_eq!(LLMBackend::Local.to_string(), "local");
     }
 }

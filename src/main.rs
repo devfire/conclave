@@ -6,16 +6,16 @@ mod message;
 mod message_handler;
 mod network;
 use crate::{
-    cli::AgentArgs, 
-    message::AgentMessage, 
+    cli::AgentArgs,
+    message::AgentMessage,
+    message_handler::{ChannelConfig, MessageHandler},
     network::NetworkConfig,
-    message_handler::{MessageHandler, ChannelConfig}
 };
-use std::{time::Duration, sync::Arc};
+use std::{sync::Arc, time::Duration};
 use tokio::task::JoinHandle;
 // We'll use the ChatMessage from the llm crate through our llm module
 
-use tracing::{Level, error, info, warn, debug};
+use tracing::{Level, debug, error, info, warn};
 
 use tracing_subscriber;
 /// Conclave Agent
@@ -59,7 +59,8 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Initialize network manager
-    let network_manager = Arc::new(network::NetworkManager::new(network_config, args.agent_id.clone()).await?);
+    let network_manager =
+        Arc::new(network::NetworkManager::new(network_config, args.agent_id.clone()).await?);
     info!("Network manager initialized successfully");
 
     // Create message handler with MPSC channel
@@ -70,7 +71,8 @@ async fn main() -> anyhow::Result<()> {
     info!("Message handler initialized with MPSC channel");
 
     // Spawn UDP message intake task (Task 6.1)
-    let udp_intake_handle = spawn_udp_intake_task(Arc::clone(&network_manager), Arc::clone(&message_handler)).await;
+    let udp_intake_handle =
+        spawn_udp_intake_task(Arc::clone(&network_manager), Arc::clone(&message_handler)).await;
     info!("UDP message intake task spawned");
 
     // Spawn LLM processing task (Task 6.2)
@@ -79,17 +81,24 @@ async fn main() -> anyhow::Result<()> {
         llm_module,
         Arc::clone(&network_manager),
         args.agent_id.clone(),
-    ).await;
+    )
+    .await;
     info!("LLM processing task spawned");
 
-    info!("Agent '{}' started successfully with concurrent processing", args.agent_id);
+    info!(
+        "Agent '{}' started successfully with concurrent processing",
+        args.agent_id
+    );
 
     // Wait for tasks to complete (they run indefinitely)
     let result = tokio::try_join!(udp_intake_handle, llm_processing_handle);
-    
+
     match result {
         Ok((udp_result, llm_result)) => {
-            info!("Both tasks completed: UDP={:?}, LLM={:?}", udp_result, llm_result);
+            info!(
+                "Both tasks completed: UDP={:?}, LLM={:?}",
+                udp_result, llm_result
+            );
         }
         Err(e) => {
             error!("Task execution error: {}", e);
@@ -106,8 +115,11 @@ async fn spawn_udp_intake_task(
     message_handler: Arc<MessageHandler>,
 ) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
-        info!("Starting UDP message intake task for agent '{}'", message_handler.agent_id());
-        
+        info!(
+            "Starting UDP message intake task for agent '{}'",
+            message_handler.agent_id()
+        );
+
         loop {
             match network_manager.receive_message().await {
                 Ok(message) => {
@@ -122,7 +134,10 @@ async fn spawn_udp_intake_task(
                         warn!("Failed to send message to channel: {}", e);
                         // Continue processing other messages even if channel is full
                     } else {
-                        debug!("Successfully forwarded message from '{}' to processing channel", message.sender_id);
+                        debug!(
+                            "Successfully forwarded message from '{}' to processing channel",
+                            message.sender_id
+                        );
                     }
                 }
                 Err(network::NetworkError::DeserializationError(e)) => {
@@ -149,28 +164,38 @@ async fn spawn_llm_processing_task(
 ) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
         info!("Starting LLM processing task for agent '{}'", agent_id);
-        
+
+        // Create response message
+        let response_message = AgentMessage::new(agent_id.clone(), "Hi".to_string());
+
+        // Broadcast response via network manager
+        network_manager
+            .send_message(&response_message)
+            .await
+            .expect("Failed to send start the conversation.");
+
         loop {
             match message_handler.receive_message().await {
                 Ok(message) => {
-                    debug!(
+                    info!(
                         "LLM processing received message from '{}' with content: '{}'",
                         message.sender_id,
-                        message.content.chars().take(50).collect::<String>()
+                        message.content // message.content.chars().take(50).collect::<String>()
                     );
 
                     // Create chat messages for LLM context
-                    let chat_messages = vec![
-                        llm_module.create_user_message(&message.content),
-                    ];
+                    let chat_messages = vec![llm_module.create_user_message(&message.content)];
 
                     // Generate LLM response
-                    let response_content = match llm_module.generate_llm_response(&chat_messages).await {
+                    let response_content = match llm_module
+                        .generate_llm_response(&chat_messages)
+                        .await
+                    {
                         Ok(llm_response) => {
                             info!(
                                 "LLM generated response for message from '{}': '{}'",
                                 message.sender_id,
-                                llm_response.chars().take(50).collect::<String>()
+                                llm_response
                             );
                             llm_response
                         }
@@ -181,7 +206,7 @@ async fn spawn_llm_processing_task(
                             );
                             // Fallback to a simple acknowledgment if LLM fails
                             format!(
-                                "Agent {} received your message but couldn't generate a proper response: {}", 
+                                "Agent {} received your message but couldn't generate a proper response: {}",
                                 agent_id, e
                             )
                         }
@@ -194,17 +219,13 @@ async fn spawn_llm_processing_task(
                     );
 
                     // Create response message
-                    let response_message = AgentMessage::new(
-                        agent_id.clone(),
-                        response_content,
-                    );
+                    let response_message = AgentMessage::new(agent_id.clone(), response_content);
 
                     // Broadcast response via network manager
-                    if let Err(e) = network_manager.send_message(&response_message).await {
-                        error!("Failed to broadcast response: {}", e);
-                    } else {
-                        debug!("Successfully broadcast response from agent '{}'", agent_id);
-                    }
+                    network_manager
+                        .send_message(&response_message)
+                        .await
+                        .expect("Failed to send msg");
                 }
                 Err(e) => {
                     error!("Message channel error: {}", e);
