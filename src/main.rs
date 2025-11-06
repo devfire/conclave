@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 use tracing::{debug, error, info, Level};
 
-use tracing_subscriber;
 /// Conclave Agent
 /// Main entry point for the Conclave agent
 /// This application initializes the agent, sets up logging, and starts the network listener.
@@ -49,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Create network configuration
     let network_config = NetworkConfig {
-        multicast_address: args.multicast_address.clone(),
+        multicast_address: args.multicast_address,
         interface: args.interface.clone(),
         buffer_size: 65536, // 64KB buffer for better performance
         compression_threshold: 1024, // Compress messages larger than 1KB

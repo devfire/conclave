@@ -30,6 +30,12 @@ pub enum NetworkError {
     ConfigError(String),
 }
 
+impl From<NetworkError> for String {
+    fn from(error: NetworkError) -> Self {
+        error.to_string()
+    }
+}
+
 /// Configuration for network operations
 #[derive(Debug, Clone)]
 pub struct NetworkConfig {

@@ -40,10 +40,7 @@ impl Processor {
             let response_message = AgentMessage::new(agent_id.clone(), "Hi".to_string());
 
             // Broadcast response via network manager
-            network_manager
-                .send_message(&response_message)
-                .await
-                .expect("Failed to send start the conversation.");
+            network_manager.send_message(&response_message).await?;
 
             loop {
                 match message_handler.receive_message().await {
@@ -90,13 +87,13 @@ impl Processor {
                         );
 
                         // Create response message
-                        let response_message = AgentMessage::new(agent_id.clone(), response_content);
+                        let response_message =
+                            AgentMessage::new(agent_id.clone(), response_content);
 
                         // Broadcast response via network manager
                         network_manager
                             .send_message(&response_message)
-                            .await
-                            .expect("Failed to send msg");
+                            .await?;
                     }
                     Err(e) => {
                         error!("Message channel error: {}", e);
