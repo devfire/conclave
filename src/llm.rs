@@ -42,6 +42,7 @@ impl LLMModule {
             .model(&args.model)
             .timeout_seconds(args.timeout_seconds)
             .stream(false)
+            .max_tokens(8192)
             .temperature(0.7)
             // set the system message for the LLM to args.personality and default to "Keep responses concise." if not provided
             .system(if args.personality.is_empty() {

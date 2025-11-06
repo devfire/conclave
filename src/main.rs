@@ -52,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
         multicast_address: args.multicast_address.clone(),
         interface: args.interface.clone(),
         buffer_size: 65536, // 64KB buffer for better performance
+        compression_threshold: 1024, // Compress messages larger than 1KB
     };
 
     // Initialize network manager
