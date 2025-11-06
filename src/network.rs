@@ -1,4 +1,4 @@
-use crate::message::AgentMessage;
+use crate::message::{AgentMessage, CompressedAgentMessage};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{Ipv4Addr, SocketAddr};
 
@@ -33,9 +33,15 @@ pub enum NetworkError {
 /// Configuration for network operations
 #[derive(Debug, Clone)]
 pub struct NetworkConfig {
+    /// Multicast address for agent communication
     pub multicast_address: SocketAddr,
+    /// Network interface to bind to (None for default)
     pub interface: Option<String>,
+    /// Size of the receive buffer in bytes
     pub buffer_size: usize,
+    /// Message size threshold in bytes above which compression will be applied
+    /// Messages larger than this threshold will be compressed using gzip before transmission
+    pub compression_threshold: usize,
 }
 
 impl Default for NetworkConfig {
@@ -43,7 +49,8 @@ impl Default for NetworkConfig {
         Self {
             multicast_address: "239.255.255.250:8080".parse().unwrap(),
             interface: None,
-            buffer_size: 65536, // 64KB buffer
+            buffer_size: 65536,          // 64KB buffer
+            compression_threshold: 1024, // Compress messages larger than 1KB
         }
     }
 }
@@ -162,8 +169,15 @@ impl NetworkManager {
 
     /// Send a message to the multicast group
     pub async fn send_message(&self, message: &AgentMessage) -> Result<(), NetworkError> {
-        // Serialize the message using protobuf
-        let serialized = message
+        // Convert to compressed message based on threshold
+        let compressed_message = message
+            .to_compressed(self.config.compression_threshold)
+            .map_err(|e| {
+                NetworkError::ConfigError(format!("Failed to compress message: {}", e))
+            })?;
+
+        // Serialize the compressed message using protobuf
+        let serialized = compressed_message
             .serialize()
             .map_err(NetworkError::SerializationError)?;
 
@@ -171,10 +185,12 @@ impl NetworkManager {
         match self.socket.send_to(&serialized, self.multicast_addr).await {
             Ok(bytes_sent) => {
                 tracing::debug!(
-                    "Sent {} bytes to multicast group {} from agent {}",
+                    "Sent {} bytes to multicast group {} from agent {} (compressed: {}, original size: {})",
                     bytes_sent,
                     self.multicast_addr,
-                    self.agent_id
+                    self.agent_id,
+                    compressed_message.is_compressed,
+                    compressed_message.original_size
                 );
                 Ok(())
             }
@@ -205,12 +221,36 @@ impl NetworkManager {
                 // Trim buffer to actual message size
                 buffer.truncate(bytes_received);
 
-                // Deserialize the message
+                // First deserialize as AgentMessage to check if content is compressed
                 match AgentMessage::deserialize(&buffer) {
-                    Ok(message) => {
+                    Ok(temp_message) => {
+                        // Check if message content is base64 encoded (compressed)
+                        let is_compressed = temp_message.content.starts_with("H4") || // gzip base64 starts with H4
+                                           temp_message.content.starts_with("eJ"); // zlib base64 starts with eJ
+
+                        // Convert to CompressedAgentMessage and then to regular AgentMessage
+                        let compressed_message = CompressedAgentMessage::deserialize(
+                            &buffer,
+                            is_compressed,
+                            temp_message.content.len(),
+                        )
+                        .map_err(|e| {
+                            NetworkError::DeserializationError(prost::DecodeError::new(
+                                format!("Failed to deserialize compressed message: {}", e),
+                            ))
+                        })?;
+
+                        let message = compressed_message.to_agent_message().map_err(|e| {
+                            NetworkError::DeserializationError(prost::DecodeError::new(
+                                format!("Failed to decompress message: {}", e),
+                            ))
+                        })?;
+
                         tracing::debug!(
-                            "Successfully deserialized message from agent {} with content: '{}'",
+                            "Successfully deserialized message from agent {} (compressed: {}, original size: {}) with content: '{}'",
                             message.sender_id,
+                            compressed_message.is_compressed,
+                            compressed_message.original_size,
                             message.content.chars().take(50).collect::<String>()
                         );
                         Ok(message)
@@ -245,6 +285,7 @@ mod tests {
         assert!(config.multicast_address.ip().is_multicast());
         assert_eq!(config.multicast_address.port(), 8080);
         assert_eq!(config.buffer_size, 65536);
+        assert_eq!(config.compression_threshold, 1024);
     }
 
     #[tokio::test]
@@ -253,6 +294,7 @@ mod tests {
             multicast_address: "239.255.255.250:8080".parse().unwrap(),
             interface: None,
             buffer_size: 1024,
+            compression_threshold: 1024,
         };
 
         let result = NetworkManager::new(config, "test-agent".to_string()).await;
@@ -265,6 +307,7 @@ mod tests {
             multicast_address: "192.168.1.1:8080".parse().unwrap(), // Not multicast
             interface: None,
             buffer_size: 1024,
+            compression_threshold: 1024,
         };
 
         let result = NetworkManager::new(config, "test-agent".to_string()).await;
@@ -283,6 +326,7 @@ mod tests {
             multicast_address: "239.255.255.250:8080".parse().unwrap(),
             interface: None,
             buffer_size: 1024,
+            compression_threshold: 1024,
         };
 
         let result = NetworkManager::create_multicast_socket(&config);
@@ -295,6 +339,7 @@ mod tests {
             multicast_address: "239.255.255.250:8080".parse().unwrap(),
             interface: Some("127.0.0.1".to_string()),
             buffer_size: 1024,
+            compression_threshold: 1024,
         };
 
         let result = NetworkManager::create_multicast_socket(&config);
@@ -319,6 +364,7 @@ mod tests {
             multicast_address: "239.255.255.250:8080".parse().unwrap(),
             interface: None,
             buffer_size: 1024,
+            compression_threshold: 1024,
         };
 
         let manager = NetworkManager::new(config, "test-sender".to_string())
@@ -339,6 +385,7 @@ mod tests {
             multicast_address: "239.255.255.250:8081".parse().unwrap(), // Different port
             interface: None,
             buffer_size: 1024,
+            compression_threshold: 1024,
         };
 
         let manager = NetworkManager::new(config, "test-sender-empty".to_string())
@@ -357,6 +404,7 @@ mod tests {
             multicast_address: "239.255.255.250:8082".parse().unwrap(), // Different port
             interface: None,
             buffer_size: 1024,
+            compression_threshold: 1024,
         };
 
         let manager = NetworkManager::new(config, "test-sender-unicode".to_string())
@@ -377,6 +425,7 @@ mod tests {
             multicast_address: "239.255.255.250:8083".parse().unwrap(),
             interface: None,
             buffer_size: 1024,
+            compression_threshold: 1024,
         };
 
         // Create sender and receiver
@@ -423,6 +472,7 @@ mod tests {
             multicast_address: "239.255.255.250:8084".parse().unwrap(),
             interface: None,
             buffer_size: 1024,
+            compression_threshold: 1024,
         };
 
         let manager = NetworkManager::new(config, "test-malformed".to_string())
@@ -457,5 +507,104 @@ mod tests {
                 panic!("Expected deserialization error or timeout");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_compression_functionality() {
+        let config = NetworkConfig {
+            multicast_address: "239.255.255.250:8085".parse().unwrap(),
+            interface: None,
+            buffer_size: 1024,
+            compression_threshold: 100, // Low threshold to force compression
+        };
+
+        // Create sender and receiver
+        let sender = NetworkManager::new(config.clone(), "test-sender-compress".to_string())
+            .await
+            .unwrap();
+        let receiver = NetworkManager::new(config, "test-receiver-compress".to_string())
+            .await
+            .unwrap();
+
+        // Create a message that should be compressed (longer than threshold)
+        let long_content = "This is a very long message that should definitely be compressed because it exceeds the compression threshold of 100 bytes. ".repeat(5);
+        let test_message = crate::message::AgentMessage::new(
+            "test-sender-compress".to_string(),
+            long_content,
+        );
+
+        // Send message in a separate task
+        let send_message = test_message.clone();
+        let send_task = tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            sender.send_message(&send_message).await
+        });
+
+        // Receive message with timeout
+        let receive_task = tokio::time::timeout(
+            tokio::time::Duration::from_secs(2),
+            receiver.receive_message(),
+        );
+
+        // Wait for both operations
+        let (send_result, receive_result) = tokio::join!(send_task, receive_task);
+
+        // Verify results
+        assert!(send_result.unwrap().is_ok());
+        assert!(receive_result.is_ok());
+
+        let received_message = receive_result.unwrap().unwrap();
+        assert_eq!(received_message.sender_id, test_message.sender_id);
+        assert_eq!(received_message.content, test_message.content);
+        assert_eq!(received_message.timestamp, test_message.timestamp);
+    }
+
+    #[tokio::test]
+    async fn test_no_compression_for_small_messages() {
+        let config = NetworkConfig {
+            multicast_address: "239.255.255.250:8086".parse().unwrap(),
+            interface: None,
+            buffer_size: 1024,
+            compression_threshold: 1000, // High threshold to avoid compression
+        };
+
+        // Create sender and receiver
+        let sender = NetworkManager::new(config.clone(), "test-sender-no-compress".to_string())
+            .await
+            .unwrap();
+        let receiver = NetworkManager::new(config, "test-receiver-no-compress".to_string())
+            .await
+            .unwrap();
+
+        // Create a short message that should not be compressed
+        let test_message = crate::message::AgentMessage::new(
+            "test-sender-no-compress".to_string(),
+            "Short message".to_string(),
+        );
+
+        // Send message in a separate task
+        let send_message = test_message.clone();
+        let send_task = tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            sender.send_message(&send_message).await
+        });
+
+        // Receive message with timeout
+        let receive_task = tokio::time::timeout(
+            tokio::time::Duration::from_secs(2),
+            receiver.receive_message(),
+        );
+
+        // Wait for both operations
+        let (send_result, receive_result) = tokio::join!(send_task, receive_task);
+
+        // Verify results
+        assert!(send_result.unwrap().is_ok());
+        assert!(receive_result.is_ok());
+
+        let received_message = receive_result.unwrap().unwrap();
+        assert_eq!(received_message.sender_id, test_message.sender_id);
+        assert_eq!(received_message.content, test_message.content);
+        assert_eq!(received_message.timestamp, test_message.timestamp);
     }
 }
