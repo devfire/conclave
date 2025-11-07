@@ -48,7 +48,7 @@ impl LLMModule {
             .timeout_seconds(args.timeout_seconds)
             .max_tokens(8192)
             .temperature(0.7)
-            .sliding_window_with_strategy(10, llm::memory::TrimStrategy::Summarize)
+            .sliding_window_with_strategy(20, llm::memory::TrimStrategy::Summarize)
             // set the system message for the LLM to the personality prompt
             .system(&personality);
 
@@ -57,9 +57,7 @@ impl LLMModule {
             builder = builder.base_url(url);
         }
 
-        let provider = builder
-            .build()
-            .map_err(|e| anyhow!("Failed to build LLM provider: {:?}", e))?;
+        let provider = builder.build()?;
 
         Ok(Self { provider })
     }
@@ -67,11 +65,7 @@ impl LLMModule {
     /// Generates a response based on the provided message history
     pub async fn generate_llm_response(&self, messages: &[ChatMessage]) -> Result<String> {
         debug!("Sending {:?} messages.", messages);
-        let response = self
-            .provider
-            .chat(messages)
-            .await
-            .map_err(|e| anyhow!("Failed to generate LLM response: {:?}", e))?;
+        let response = self.provider.chat(messages).await?;
         Ok(response.to_string())
     }
 

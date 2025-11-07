@@ -1,3 +1,4 @@
+use anyhow::{Result, anyhow};
 use clap::{Parser, ValueEnum};
 use std::fs;
 use std::net::SocketAddr;
@@ -160,7 +161,7 @@ pub struct AgentArgs {
     #[arg(
         long = "processing-delay",
         help = "Processing delay in milliseconds for simulating processing time",
-        default_value = "5000",
+        default_value = "0",
         value_name = "MILLISECONDS"
     )]
     pub processing_delay_ms: u64,
@@ -168,27 +169,28 @@ pub struct AgentArgs {
 
 impl AgentArgs {
     /// Get the effective personality prompt, reading from file if specified
-    pub fn get_personality(&self) -> Result<String, String> {
+    pub fn get_personality(&self) -> Result<String> {
         if let Some(file_path) = &self.personality_file {
             let path = Path::new(file_path);
             if !path.exists() {
-                return Err(format!("Personality file '{}' does not exist", file_path));
+                return Err(anyhow!("Personality file '{}' does not exist", file_path));
             }
             if !path.is_file() {
-                return Err(format!("'{}' is not a file", file_path));
+                return Err(anyhow!("'{}' is not a file", file_path));
             }
 
             match fs::read_to_string(path) {
                 Ok(content) => {
                     if content.trim().is_empty() {
-                        Err("Personality file is empty".to_string())
+                        Err(anyhow!("Personality file is empty"))
                     } else {
                         Ok(content)
                     }
                 }
-                Err(e) => Err(format!(
+                Err(e) => Err(anyhow!(
                     "Failed to read personality file '{}': {}",
-                    file_path, e
+                    file_path,
+                    e
                 )),
             }
         } else {
@@ -398,11 +400,14 @@ mod tests {
         // When both flags are provided, clap will return an error
         let result = AgentArgs::try_parse_from(&[
             "conclave",
-            "--agent-id", "test-agent",
-            "--personality", "inline personality",
-            "--personality-file", "/path/to/file"
+            "--agent-id",
+            "test-agent",
+            "--personality",
+            "inline personality",
+            "--personality-file",
+            "/path/to/file",
         ]);
-        
+
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("cannot be used with"));
@@ -413,13 +418,18 @@ mod tests {
         // Test that only --personality-file flag works
         let result = AgentArgs::try_parse_from(&[
             "conclave",
-            "--agent-id", "test-agent",
-            "--personality-file", "/path/to/personality.txt"
+            "--agent-id",
+            "test-agent",
+            "--personality-file",
+            "/path/to/personality.txt",
         ]);
-        
+
         assert!(result.is_ok());
         let args = result.unwrap();
-        assert_eq!(args.personality_file, Some("/path/to/personality.txt".to_string()));
+        assert_eq!(
+            args.personality_file,
+            Some("/path/to/personality.txt".to_string())
+        );
         // personality should still have default value since only file was specified
         assert!(!args.personality.is_empty());
     }
@@ -429,10 +439,12 @@ mod tests {
         // Test that only --personality flag works (default behavior)
         let result = AgentArgs::try_parse_from(&[
             "conclave",
-            "--agent-id", "test-agent",
-            "--personality", "custom personality"
+            "--agent-id",
+            "test-agent",
+            "--personality",
+            "custom personality",
         ]);
-        
+
         assert!(result.is_ok());
         let args = result.unwrap();
         assert_eq!(args.personality, "custom personality");
@@ -442,11 +454,8 @@ mod tests {
     #[test]
     fn test_no_personality_flags() {
         // Test default behavior when neither flag is provided
-        let result = AgentArgs::try_parse_from(&[
-            "conclave",
-            "--agent-id", "test-agent"
-        ]);
-        
+        let result = AgentArgs::try_parse_from(&["conclave", "--agent-id", "test-agent"]);
+
         assert!(result.is_ok());
         let args = result.unwrap();
         assert!(!args.personality.is_empty());
