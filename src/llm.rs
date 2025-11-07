@@ -1,9 +1,8 @@
-// Import required modules from the LLM library
+use anyhow::{Result, anyhow};
 use llm::{
     LLMProvider,
     builder::{LLMBackend, LLMBuilder},
     chat::ChatMessage,
-    error::LLMError,
 };
 use tracing::debug;
 
@@ -17,7 +16,7 @@ pub struct LLMModule {
 
 impl LLMModule {
     /// Creates a new LLM module instance based on command-line arguments
-    pub fn new(args: &AgentArgs) -> Result<Self, LLMError> {
+    pub fn new(args: &AgentArgs) -> Result<Self> {
         let mut builder = LLMBuilder::new();
 
         // Map project backend to provider backend
@@ -36,7 +35,12 @@ impl LLMModule {
             builder = builder.api_key(key);
         }
 
-        debug!("Personality: {}", args.personality);
+        // Get personality prompt (either from inline flag or file)
+        let personality = args
+            .get_personality()
+            .map_err(|e| anyhow!("Failed to load personality: {}", e))?;
+
+        debug!("Personality: {}", personality);
 
         // Configure common parameters
         builder = builder
@@ -44,30 +48,30 @@ impl LLMModule {
             .timeout_seconds(args.timeout_seconds)
             .max_tokens(8192)
             .temperature(0.7)
-            // set the system message for the LLM to args.personality and default to "Keep responses concise." if not provided
-            .system(if args.personality.is_empty() {
-                "Keep responses concise."
-            } else {
-                &args.personality
-            });
+            .sliding_window_with_strategy(10, llm::memory::TrimStrategy::Summarize)
+            // set the system message for the LLM to the personality prompt
+            .system(&personality);
 
         // Set custom endpoint if provided
         if let Some(url) = &args.endpoint {
             builder = builder.base_url(url);
         }
 
-        let provider = builder.build()?;
+        let provider = builder
+            .build()
+            .map_err(|e| anyhow!("Failed to build LLM provider: {:?}", e))?;
 
         Ok(Self { provider })
     }
 
     /// Generates a response based on the provided message history
-    pub async fn generate_llm_response(
-        &self,
-        messages: &[ChatMessage],
-    ) -> Result<String, LLMError> {
+    pub async fn generate_llm_response(&self, messages: &[ChatMessage]) -> Result<String> {
         debug!("Sending {:?} messages.", messages);
-        let response = self.provider.chat(messages).await?;
+        let response = self
+            .provider
+            .chat(messages)
+            .await
+            .map_err(|e| anyhow!("Failed to generate LLM response: {:?}", e))?;
         Ok(response.to_string())
     }
 

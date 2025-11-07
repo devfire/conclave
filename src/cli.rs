@@ -1,5 +1,7 @@
 use clap::{Parser, ValueEnum};
+use std::fs;
 use std::net::SocketAddr;
+use std::path::Path;
 
 /// Supported LLM backend types
 #[derive(Debug, Clone, ValueEnum)]
@@ -137,13 +139,22 @@ pub struct AgentArgs {
 
     /// Agent personality for LLM system prompt
     #[arg(
-        short = 'p',
         long = "personality",
         help = "Agent personality that defines behavior and response style",
         default_value = "You are a helpful AI agent. Keep responses concise and professional.",
-        value_name = "PERSONALITY"
+        value_name = "PERSONALITY",
+        conflicts_with = "personality_file"
     )]
     pub personality: String,
+
+    /// Read agent personality from file (mutually exclusive with -p/--personality)
+    #[arg(
+        long = "personality-file",
+        help = "Read agent personality from file (mutually exclusive with --personality)",
+        value_name = "FILE_PATH",
+        conflicts_with = "personality"
+    )]
+    pub personality_file: Option<String>,
 
     /// Processing delay in milliseconds for simulated processing time
     #[arg(
@@ -156,6 +167,35 @@ pub struct AgentArgs {
 }
 
 impl AgentArgs {
+    /// Get the effective personality prompt, reading from file if specified
+    pub fn get_personality(&self) -> Result<String, String> {
+        if let Some(file_path) = &self.personality_file {
+            let path = Path::new(file_path);
+            if !path.exists() {
+                return Err(format!("Personality file '{}' does not exist", file_path));
+            }
+            if !path.is_file() {
+                return Err(format!("'{}' is not a file", file_path));
+            }
+
+            match fs::read_to_string(path) {
+                Ok(content) => {
+                    if content.trim().is_empty() {
+                        Err("Personality file is empty".to_string())
+                    } else {
+                        Ok(content)
+                    }
+                }
+                Err(e) => Err(format!(
+                    "Failed to read personality file '{}': {}",
+                    file_path, e
+                )),
+            }
+        } else {
+            Ok(self.personality.clone())
+        }
+    }
+
     /// Validate the provided arguments
     pub fn validate(&self) -> Result<(), String> {
         // Validate agent ID is not empty
@@ -203,6 +243,13 @@ impl AgentArgs {
             return Err("Processing delay cannot exceed 60 seconds".to_string());
         }
 
+        // Validate personality file can be read if specified
+        if let Some(ref file_path) = self.personality_file {
+            if let Err(e) = self.get_personality() {
+                return Err(format!("Invalid personality file '{}': {}", file_path, e));
+            }
+        }
+
         Ok(())
     }
 
@@ -241,6 +288,7 @@ mod tests {
             max_retries: 3,
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
+            personality_file: None,
             processing_delay_ms: 5000,
         };
 
@@ -261,6 +309,7 @@ mod tests {
             max_retries: 3,
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
+            personality_file: None,
             processing_delay_ms: 5000,
         };
 
@@ -282,6 +331,7 @@ mod tests {
             max_retries: 3,
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
+            personality_file: None,
             processing_delay_ms: 5000,
         };
 
@@ -306,6 +356,7 @@ mod tests {
             max_retries: 3,
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
+            personality_file: None,
             processing_delay_ms: 5000,
         };
 
@@ -315,5 +366,90 @@ mod tests {
                 .unwrap_err()
                 .contains("is not a valid multicast address")
         );
+    }
+
+    #[test]
+    fn test_get_personality_from_inline() {
+        let args = AgentArgs {
+            agent_id: "test-agent".to_string(),
+            multicast_address: "239.255.255.250:8080".parse().unwrap(),
+            interface: None,
+            llm_backend: LLMBackend::OpenAI,
+            model: "gpt-3.5-turbo".to_string(),
+            api_key: None,
+            endpoint: None,
+            timeout_seconds: 30,
+            max_retries: 3,
+            log_level: "info".to_string(),
+            personality: "You are a helpful AI agent.".to_string(),
+            personality_file: None,
+            processing_delay_ms: 5000,
+        };
+
+        assert_eq!(
+            args.get_personality().unwrap(),
+            "You are a helpful AI agent."
+        );
+    }
+
+    #[test]
+    fn test_personality_file_mutual_exclusivity() {
+        // This test verifies that clap's conflicts_with attribute works
+        // When both flags are provided, clap will return an error
+        let result = AgentArgs::try_parse_from(&[
+            "conclave",
+            "--agent-id", "test-agent",
+            "--personality", "inline personality",
+            "--personality-file", "/path/to/file"
+        ]);
+        
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("cannot be used with"));
+    }
+
+    #[test]
+    fn test_personality_file_flag_alone() {
+        // Test that only --personality-file flag works
+        let result = AgentArgs::try_parse_from(&[
+            "conclave",
+            "--agent-id", "test-agent",
+            "--personality-file", "/path/to/personality.txt"
+        ]);
+        
+        assert!(result.is_ok());
+        let args = result.unwrap();
+        assert_eq!(args.personality_file, Some("/path/to/personality.txt".to_string()));
+        // personality should still have default value since only file was specified
+        assert!(!args.personality.is_empty());
+    }
+
+    #[test]
+    fn test_personality_inline_flag_alone() {
+        // Test that only --personality flag works (default behavior)
+        let result = AgentArgs::try_parse_from(&[
+            "conclave",
+            "--agent-id", "test-agent",
+            "--personality", "custom personality"
+        ]);
+        
+        assert!(result.is_ok());
+        let args = result.unwrap();
+        assert_eq!(args.personality, "custom personality");
+        assert_eq!(args.personality_file, None);
+    }
+
+    #[test]
+    fn test_no_personality_flags() {
+        // Test default behavior when neither flag is provided
+        let result = AgentArgs::try_parse_from(&[
+            "conclave",
+            "--agent-id", "test-agent"
+        ]);
+        
+        assert!(result.is_ok());
+        let args = result.unwrap();
+        assert!(!args.personality.is_empty());
+        assert_eq!(args.personality_file, None);
     }
 }
