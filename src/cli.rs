@@ -13,6 +13,11 @@ pub enum LLMBackend {
     /// Google Gemini models
     #[value(name = "google")]
     Google,
+
+    /// OpenRouter
+    #[value(name = "openrouter")]
+    OpenRouter,
+
     /// Local models via Ollama
     #[value(name = "local")]
     Local,
@@ -24,6 +29,7 @@ impl std::fmt::Display for LLMBackend {
             LLMBackend::OpenAI => write!(f, "openai"),
             LLMBackend::Anthropic => write!(f, "anthropic"),
             LLMBackend::Google => write!(f, "google"),
+            LLMBackend::OpenRouter => write!(f, "openrouter"),
             LLMBackend::Local => write!(f, "local"),
         }
     }
@@ -120,15 +126,6 @@ pub struct AgentArgs {
     )]
     pub max_retries: u32,
 
-    /// Enable verbose logging
-    #[arg(
-        short = 'v',
-        long = "verbose",
-        help = "Enable verbose logging output",
-        action = clap::ArgAction::Count
-    )]
-    pub verbose: u8,
-
     /// Log level filter
     #[arg(
         long = "log-level",
@@ -147,6 +144,15 @@ pub struct AgentArgs {
         value_name = "PERSONALITY"
     )]
     pub personality: String,
+
+    /// Processing delay in milliseconds for simulated processing time
+    #[arg(
+        long = "processing-delay",
+        help = "Processing delay in milliseconds for simulating processing time",
+        default_value = "5000",
+        value_name = "MILLISECONDS"
+    )]
+    pub processing_delay_ms: u64,
 }
 
 impl AgentArgs {
@@ -192,6 +198,11 @@ impl AgentArgs {
             return Err("Model name cannot be empty".to_string());
         }
 
+        // Validate processing delay is reasonable
+        if self.processing_delay_ms > 60000 {
+            return Err("Processing delay cannot exceed 60 seconds".to_string());
+        }
+
         Ok(())
     }
 
@@ -206,6 +217,7 @@ impl AgentArgs {
             LLMBackend::OpenAI => std::env::var("OPENAI_API_KEY").ok(),
             LLMBackend::Anthropic => std::env::var("ANTHROPIC_API_KEY").ok(),
             LLMBackend::Google => std::env::var("GEMINI_API_KEY").ok(),
+            LLMBackend::OpenRouter => std::env::var("OPENROUTER_API_KEY").ok(),
             LLMBackend::Local => None, // Local models typically don't need API keys
         }
     }
@@ -227,9 +239,9 @@ mod tests {
             endpoint: None,
             timeout_seconds: 30,
             max_retries: 3,
-            verbose: 0,
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
+            processing_delay_ms: 5000,
         };
 
         assert!(args.validate().is_ok());
@@ -247,9 +259,9 @@ mod tests {
             endpoint: None,
             timeout_seconds: 30,
             max_retries: 3,
-            verbose: 0,
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
+            processing_delay_ms: 5000,
         };
 
         assert!(args.validate().is_err());
@@ -268,9 +280,9 @@ mod tests {
             endpoint: None,
             timeout_seconds: 30,
             max_retries: 3,
-            verbose: 0,
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
+            processing_delay_ms: 5000,
         };
 
         assert!(args.validate().is_err());
@@ -292,9 +304,9 @@ mod tests {
             endpoint: None,
             timeout_seconds: 30,
             max_retries: 3,
-            verbose: 0,
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
+            processing_delay_ms: 5000,
         };
 
         assert!(args.validate().is_err());

@@ -12,24 +12,24 @@ use crate::{
 use std::sync::Arc;
 // We'll use the ChatMessage from the llm crate through our llm module
 
-use tracing::{debug, error, info, Level};
+use tracing::{Level, debug, error, info};
 
 /// Conclave Agent
 /// Main entry point for the Conclave agent
 /// This application initializes the agent, sets up logging, and starts the network listener.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Parse command-line arguments
+    let args = AgentArgs::parse();
+
     // Initialize tracing subscriber for logging
     tracing_subscriber::fmt()
-        .with_max_level(Level::INFO)
+        .with_max_level(args.log_level.parse::<Level>().unwrap_or(Level::INFO))
         .with_thread_ids(true)
         .with_thread_names(true)
         .with_file(true)
         .with_line_number(true)
         .init();
-
-    // Parse command-line arguments
-    let args = AgentArgs::parse();
 
     // Validate arguments
     if let Err(e) = args.validate() {
@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     let network_config = NetworkConfig {
         multicast_address: args.multicast_address,
         interface: args.interface.clone(),
-        buffer_size: 65536, // 64KB buffer for better performance
+        buffer_size: 65536,          // 64KB buffer for better performance
         compression_threshold: 1024, // Compress messages larger than 1KB
     };
 
@@ -68,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
         Arc::clone(&message_handler),
         Arc::clone(&network_manager),
         args.agent_id.clone(),
+        args.processing_delay_ms,
     );
 
     // Spawn UDP message intake task
@@ -79,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
     info!("LLM processing task spawned");
 
     // Wait for tasks to complete (they run indefinitely)
-    let _result = tokio::try_join!(udp_intake_handle, llm_processing_handle)?;
+    tokio::select!(_ = udp_intake_handle => error!("UDP intake crashed."), _ = llm_processing_handle => error!("LLM processing crashed."));
 
     Ok(())
 }

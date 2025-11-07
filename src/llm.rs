@@ -5,7 +5,7 @@ use llm::{
     chat::ChatMessage,
     error::LLMError,
 };
-use tracing::info;
+use tracing::debug;
 
 // Import project-specific types
 use crate::cli::{AgentArgs, LLMBackend as CliBackend};
@@ -26,6 +26,7 @@ impl LLMModule {
             CliBackend::Anthropic => LLMBackend::Anthropic,
             CliBackend::Google => LLMBackend::Google,
             CliBackend::Local => LLMBackend::Ollama,
+            CliBackend::OpenRouter => LLMBackend::OpenRouter,
         };
 
         builder = builder.backend(backend);
@@ -35,7 +36,7 @@ impl LLMModule {
             builder = builder.api_key(key);
         }
 
-        info!("Personality: {}", args.personality);
+        debug!("Personality: {}", args.personality);
 
         // Configure common parameters
         builder = builder
@@ -65,6 +66,7 @@ impl LLMModule {
         &self,
         messages: &[ChatMessage],
     ) -> Result<String, LLMError> {
+        debug!("Sending {:?} messages.", messages);
         let response = self.provider.chat(messages).await?;
         Ok(response.to_string())
     }

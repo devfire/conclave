@@ -14,9 +14,12 @@ pub use agent_message::AgentMessage;
 pub mod compression {
     use flate2::{Compression, write::GzEncoder};
     use std::io::Write;
+    use tracing::debug;
 
     /// Compress message content using gzip
     pub fn compress_content(content: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        debug!("Compressing message");
+
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(content.as_bytes())?;
         Ok(encoder.finish()?)
@@ -34,6 +37,9 @@ pub mod compression {
         let mut decoder = GzDecoder::new(cursor);
         let mut decompressed_string = String::new();
         decoder.read_to_string(&mut decompressed_string)?;
+
+        debug!("Decompressed input to {decompressed_string}");
+
         Ok(decompressed_string)
     }
 
@@ -48,7 +54,9 @@ impl AgentMessage {
     pub fn new(sender_id: String, content: String) -> Self {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("Failed to get current time. Time to panic because this is a basic machine right.")
+            .expect(
+                "Failed to get current time. Time to panic because this is a basic machine right.",
+            )
             .as_secs() as i64;
 
         Self {

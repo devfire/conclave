@@ -8,6 +8,7 @@ pub struct Processor {
     message_handler: Arc<MessageHandler>,
     network_manager: Arc<network::NetworkManager>,
     agent_id: String,
+    processing_delay_ms: u64,
 }
 
 impl Processor {
@@ -15,11 +16,13 @@ impl Processor {
         message_handler: Arc<MessageHandler>,
         network_manager: Arc<network::NetworkManager>,
         agent_id: String,
+        processing_delay_ms: u64,
     ) -> Self {
         Self {
             message_handler,
             network_manager,
             agent_id,
+            processing_delay_ms,
         }
     }
 
@@ -37,7 +40,8 @@ impl Processor {
             info!("Starting LLM processing task for agent '{}'", agent_id);
 
             // Bootstrap the conversation with a greeting message, otherwise everyone is waiting for the first message
-            let response_message = AgentMessage::new(agent_id.clone(), "Hi".to_string());
+            let response_message =
+                AgentMessage::new(agent_id.clone(), format!("Hi, I am agent {agent_id}."));
 
             // Broadcast response via network manager
             network_manager.send_message(&response_message).await?;
@@ -51,6 +55,8 @@ impl Processor {
                             message.content // message.content.chars().take(50).collect::<String>()
                         );
 
+                        eprintln!("{}: {}", message.sender_id, message.content);
+                        eprintln!();
                         // Create chat messages for LLM context
                         let chat_messages = vec![llm_module.create_user_message(&message.content)];
 
@@ -78,8 +84,10 @@ impl Processor {
                                 )
                             }
                         };
-                        println!("{}: {}", message.sender_id, message.content);
-                        println!("{}: {}", agent_id, response_content);
+
+                        eprintln!("{}: {}", agent_id, response_content);
+                        eprintln!("__________________________________");
+                        eprintln!();
 
                         debug!(
                             "Sending response to message from '{}': '{}'",
@@ -91,9 +99,7 @@ impl Processor {
                             AgentMessage::new(agent_id.clone(), response_content);
 
                         // Broadcast response via network manager
-                        network_manager
-                            .send_message(&response_message)
-                            .await?;
+                        network_manager.send_message(&response_message).await?;
                     }
                     Err(e) => {
                         error!("Message channel error: {}", e);
@@ -109,6 +115,7 @@ impl Processor {
     pub async fn spawn_udp_intake_task(&self) -> JoinHandle<Result<(), String>> {
         let network_manager = Arc::clone(&self.network_manager);
         let message_handler = Arc::clone(&self.message_handler);
+        // let processing_delay_ms = self.processing_delay_ms;
 
         tokio::spawn(async move {
             info!(
@@ -126,7 +133,7 @@ impl Processor {
                         );
 
                         // Introduce an artificial delay to simulate processing time
-                        tokio::time::sleep(Duration::from_millis(5000)).await;
+                        // tokio::time::sleep(Duration::from_millis(processing_delay_ms)).await;
 
                         // Send message to MPSC channel (non-blocking)
                         if let Err(e) = message_handler.try_send_message(message.clone()) {
