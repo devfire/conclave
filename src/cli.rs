@@ -167,8 +167,11 @@ pub struct AgentArgs {
     pub processing_delay_ms: u64,
 
     /// lists test values
-    #[arg(short, long)]
-    voice: bool,
+    #[arg(
+        long = "voice",
+        help = "true | false on whether to have speech or not",
+    )]
+    pub voice: bool,
 }
 
 impl AgentArgs {
@@ -325,7 +328,7 @@ mod tests {
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
             processing_delay_ms: 5000,
-            voice: false
+            voice: false,
         };
 
         assert!(args.validate().is_err());
@@ -348,7 +351,7 @@ mod tests {
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
             processing_delay_ms: 5000,
-            voice: false
+            voice: false,
         };
 
         assert!(args.validate().is_err());
@@ -374,7 +377,7 @@ mod tests {
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
             processing_delay_ms: 5000,
-            voice: false
+            voice: false,
         };
 
         assert!(args.validate().is_err());
@@ -401,7 +404,7 @@ mod tests {
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
             processing_delay_ms: 5000,
-            voice: false
+            voice: false,
         };
 
         assert_eq!(

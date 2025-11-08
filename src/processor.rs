@@ -49,6 +49,8 @@ impl Processor {
             // Broadcast response via network manager
             network_manager.send_message(&response_message).await?;
 
+            
+
             loop {
                 match message_handler.receive_message().await {
                     Ok(message) => {
@@ -82,6 +84,8 @@ impl Processor {
                             Ok(response) => response,
                             Err(e) => e.to_string(),
                         };
+
+                        // Write this to mp3
 
                         // eprintln!("__________________________________");
                         // eprintln!("{}: {}", agent_id, response_content);
