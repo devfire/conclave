@@ -4,7 +4,11 @@ use llm::{
     builder::{LLMBackend, LLMBuilder},
     chat::ChatMessage,
 };
-use tracing::{debug, warn};
+use tracing::debug;
+
+use elevenlabs_rs::endpoints::genai::tts::{TextToSpeech, TextToSpeechBody};
+use elevenlabs_rs::utils::play;
+use elevenlabs_rs::{DefaultVoice, ElevenLabsClient, Model};
 
 // Import project-specific types
 use crate::cli::{AgentArgs, LLMBackend as CliBackend};
@@ -13,6 +17,7 @@ use crate::cli::{AgentArgs, LLMBackend as CliBackend};
 pub struct LLMModule {
     provider: Box<dyn LLMProvider>,
     tts: Option<Box<dyn LLMProvider>>,
+    elevenlabs_client: Option<ElevenLabsClient>,
 }
 
 impl LLMModule {
@@ -53,6 +58,12 @@ impl LLMModule {
             None
         };
 
+        let elevenlabs_client = if args.voice {
+            Some(ElevenLabsClient::from_env().map_err(|e| anyhow!("ElevenLabsClient: {e}"))?)
+        } else {
+            None
+        };
+
         // Get personality prompt (either from inline flag or file)
         let personality = args
             .get_personality()
@@ -77,7 +88,11 @@ impl LLMModule {
 
         let provider = builder.build()?;
 
-        Ok(Self { provider, tts })
+        Ok(Self {
+            provider,
+            tts,
+            elevenlabs_client,
+        })
     }
 
     /// Generates a response based on the provided message history
@@ -92,16 +107,35 @@ impl LLMModule {
         ChatMessage::user().content(content).build()
     }
 
-    /// Save the response to mp3
-    pub async fn save_to_mp3(&self, response: &str) -> Result<()> {
-        // Generate speech
-        let audio_data = match &self.tts {
-            Some(tts) => tts.speech(response).await?,
-            None => return Err(anyhow!("Tried to generate an mp3 but failed.")),
+    // /// Save the response to mp3
+    // pub async fn save_to_mp3(&self, response: &str) -> Result<()> {
+    //     // Generate speech
+    //     let audio_data = match &self.tts {
+    //         Some(tts) => tts.speech(response).await?,
+    //         None => return Err(anyhow!("Tried to generate an mp3 but failed.")),
+    //     };
+
+    //     // Save the audio to a file
+    //     std::fs::write("output-speech-elevenlabs.mp3", audio_data)?;
+    //     Ok(())
+    // }
+
+    pub async fn say(&self, response: &str) -> Result<()> {
+        let body = TextToSpeechBody::new(response).with_model_id(Model::ElevenTurboV2_5);
+
+        let endpoint = TextToSpeech::new(DefaultVoice::Brian, body);
+
+        let speech = if let Some(elevenlabs) = &self.elevenlabs_client {
+            elevenlabs
+                .hit(endpoint)
+                .await
+                .map_err(|e| anyhow!("Error: {}", e))?
+        } else {
+            return Err(anyhow!("Failed to hit the elevenlabs endpoint"));
         };
 
-        // Save the audio to a file
-        std::fs::write("output-speech-elevenlabs.mp3", audio_data)?;
+        play(speech).map_err(|e| anyhow!("Error: {}", e))?;
+
         Ok(())
     }
 }
