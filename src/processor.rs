@@ -4,6 +4,9 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
+use tokio_retry::Retry;
+use tokio_retry::strategy::ExponentialBackoff;
+
 pub struct Processor {
     message_handler: Arc<MessageHandler>,
     network_manager: Arc<network::NetworkManager>,
@@ -55,39 +58,35 @@ impl Processor {
                             message.content // message.content.chars().take(50).collect::<String>()
                         );
 
-                        eprintln!("{}: {}", message.sender_id, message.content);
+                        eprintln!("__________________________________");
+                        eprintln!("{}: \n {}", message.sender_id, message.content);
+                        eprintln!("__________________________________");
                         eprintln!();
                         // Create chat messages for LLM context
                         let chat_messages = vec![llm_module.create_user_message(&message.content)];
 
-                        // Generate LLM response
-                        let response_content = match llm_module
-                            .generate_llm_response(&chat_messages)
-                            .await
-                        {
-                            Ok(llm_response) => {
-                                debug!(
-                                    "LLM generated response for message from '{}': '{}'",
-                                    message.sender_id, llm_response
-                                );
-                                llm_response
-                            }
-                            Err(e) => {
-                                error!(
-                                    "LLM failed to generate response for message from '{}': {}",
-                                    message.sender_id, e
-                                );
-                                // Fallback to a simple acknowledgment if LLM fails
-                                format!(
-                                    "Agent {} received your message but couldn't generate a proper response: {}",
-                                    agent_id, e
-                                )
-                            }
+                        // Retry an async operation
+                        let llm_call_result = Retry::spawn(
+                            ExponentialBackoff::from_millis(100)
+                                .max_delay(Duration::from_secs(10))
+                                .take(5),
+                            || async {
+                                debug!("Invoking LLM.");
+
+                                llm_module.generate_llm_response(&chat_messages).await
+                            },
+                        )
+                        .await;
+
+                        let response_content = match llm_call_result {
+                            Ok(response) => response,
+                            Err(e) => e.to_string(),
                         };
 
-                        eprintln!("{}: {}", agent_id, response_content);
-                        eprintln!("__________________________________");
-                        eprintln!();
+                        // eprintln!("__________________________________");
+                        // eprintln!("{}: {}", agent_id, response_content);
+                        // eprintln!("__________________________________");
+                        // eprintln!();
 
                         debug!(
                             "Sending response to message from '{}': '{}'",
