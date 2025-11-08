@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use clap::{Parser, ValueEnum};
 use std::fs;
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Supported LLM backend types
 #[derive(Debug, Clone, ValueEnum)]
@@ -155,7 +155,7 @@ pub struct AgentArgs {
         value_name = "FILE_PATH",
         conflicts_with = "personality"
     )]
-    pub personality_file: Option<String>,
+    pub personality_file: Option<PathBuf>,
 
     /// Processing delay in milliseconds for simulated processing time
     #[arg(
@@ -165,6 +165,10 @@ pub struct AgentArgs {
         value_name = "MILLISECONDS"
     )]
     pub processing_delay_ms: u64,
+
+    /// lists test values
+    #[arg(short, long)]
+    voice: bool,
 }
 
 impl AgentArgs {
@@ -173,10 +177,13 @@ impl AgentArgs {
         if let Some(file_path) = &self.personality_file {
             let path = Path::new(file_path);
             if !path.exists() {
-                return Err(anyhow!("Personality file '{}' does not exist", file_path));
+                return Err(anyhow!(
+                    "Personality file '{}' does not exist",
+                    file_path.to_string_lossy()
+                ));
             }
             if !path.is_file() {
-                return Err(anyhow!("'{}' is not a file", file_path));
+                return Err(anyhow!("'{}' is not a file", file_path.to_string_lossy()));
             }
 
             match fs::read_to_string(path) {
@@ -189,7 +196,7 @@ impl AgentArgs {
                 }
                 Err(e) => Err(anyhow!(
                     "Failed to read personality file '{}': {}",
-                    file_path,
+                    file_path.to_string_lossy(),
                     e
                 )),
             }
@@ -248,7 +255,11 @@ impl AgentArgs {
         // Validate personality file can be read if specified
         if let Some(ref file_path) = self.personality_file {
             if let Err(e) = self.get_personality() {
-                return Err(format!("Invalid personality file '{}': {}", file_path, e));
+                return Err(format!(
+                    "Invalid personality file '{}': {}",
+                    file_path.to_string_lossy(),
+                    e
+                ));
             }
         }
 
@@ -292,6 +303,7 @@ mod tests {
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
             processing_delay_ms: 5000,
+            voice: false,
         };
 
         assert!(args.validate().is_ok());
@@ -313,6 +325,7 @@ mod tests {
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
             processing_delay_ms: 5000,
+            voice: false
         };
 
         assert!(args.validate().is_err());
@@ -335,6 +348,7 @@ mod tests {
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
             processing_delay_ms: 5000,
+            voice: false
         };
 
         assert!(args.validate().is_err());
@@ -360,6 +374,7 @@ mod tests {
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
             processing_delay_ms: 5000,
+            voice: false
         };
 
         assert!(args.validate().is_err());
@@ -386,6 +401,7 @@ mod tests {
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
             processing_delay_ms: 5000,
+            voice: false
         };
 
         assert_eq!(
@@ -428,7 +444,7 @@ mod tests {
         let args = result.unwrap();
         assert_eq!(
             args.personality_file,
-            Some("/path/to/personality.txt".to_string())
+            Some(PathBuf::from("/path/to/personality.txt"))
         );
         // personality should still have default value since only file was specified
         assert!(!args.personality.is_empty());
