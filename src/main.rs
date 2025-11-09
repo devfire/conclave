@@ -37,10 +37,7 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    info!(
-        "Starting agent '{}' with {} backend and model '{}'",
-        args.agent_id, args.llm_backend, args.model
-    );
+    info!("Starting agent '{}' with args {:?}", args.agent_id, args);
 
     // Initialize LLM module
     let llm_module = llm::LLMModule::new(&args)?;

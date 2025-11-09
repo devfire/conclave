@@ -44,7 +44,7 @@ impl Processor {
 
             // Bootstrap the conversation with a greeting message, otherwise everyone is waiting for the first message
             let response_message =
-                AgentMessage::new(agent_id.clone(), format!("Hi, I am agent {agent_id}."));
+                AgentMessage::new(agent_id.clone(), format!("Hi, I am {agent_id}."));
 
             // Broadcast response via network manager
             network_manager.send_message(&response_message).await?;
@@ -83,10 +83,11 @@ impl Processor {
                             Err(e) => e.to_string(),
                         };
 
-                        // eprintln!("__________________________________");
-                        // eprintln!("{}: {}", agent_id, response_content);
-                        // eprintln!("__________________________________");
-                        // eprintln!();
+                        // Say it
+                        match llm_module.say(&response_content).await {
+                            Ok(_) => info!("Speaking..."),
+                            Err(e) => error!("ElevenLabs error: {e}"),
+                        }
 
                         debug!(
                             "Sending response to message from '{}': '{}'",

@@ -6,12 +6,17 @@ use llm::{
 };
 use tracing::debug;
 
+use elevenlabs_rs::endpoints::genai::tts::{TextToSpeech, TextToSpeechBody};
+use elevenlabs_rs::utils::play;
+use elevenlabs_rs::{DefaultVoice, ElevenLabsClient, Model};
+
 // Import project-specific types
 use crate::cli::{AgentArgs, LLMBackend as CliBackend};
 
 /// Common LLM module for handling different backends
 pub struct LLMModule {
     provider: Box<dyn LLMProvider>,
+    elevenlabs_client: Option<ElevenLabsClient>,
 }
 
 impl LLMModule {
@@ -34,6 +39,12 @@ impl LLMModule {
         if let Some(key) = args.get_api_key() {
             builder = builder.api_key(key);
         }
+
+        let elevenlabs_client = if args.voice {
+            Some(ElevenLabsClient::from_env().map_err(|e| anyhow!("ElevenLabsClient: {e}"))?)
+        } else {
+            None
+        };
 
         // Get personality prompt (either from inline flag or file)
         let personality = args
@@ -59,7 +70,10 @@ impl LLMModule {
 
         let provider = builder.build()?;
 
-        Ok(Self { provider })
+        Ok(Self {
+            provider,
+            elevenlabs_client,
+        })
     }
 
     /// Generates a response based on the provided message history
@@ -72,5 +86,24 @@ impl LLMModule {
     /// Create a user ChatMessage from content
     pub fn create_user_message(&self, content: &str) -> ChatMessage {
         ChatMessage::user().content(content).build()
+    }
+
+    pub async fn say(&self, response: &str) -> Result<()> {
+        let body = TextToSpeechBody::new(response).with_model_id(Model::ElevenTurboV2_5);
+
+        let endpoint = TextToSpeech::new(DefaultVoice::Brian, body);
+
+        let speech = if let Some(elevenlabs) = &self.elevenlabs_client {
+            elevenlabs
+                .hit(endpoint)
+                .await
+                .map_err(|e| anyhow!("Error: {}", e))?
+        } else {
+            return Err(anyhow!("Failed to hit the elevenlabs endpoint"));
+        };
+
+        play(speech).map_err(|e| anyhow!("Error: {}", e))?;
+
+        Ok(())
     }
 }
