@@ -85,15 +85,9 @@ impl Processor {
 
                         // Say it
                         match llm_module.say(&response_content).await {
-                            Ok(_) => info!("Spoken."),
-                            Err(e) => error!("Error: {e}"),
+                            Ok(_) => info!("Speaking..."),
+                            Err(e) => error!("ElevenLabs error: {e}"),
                         }
-                        // Write this to mp3
-
-                        // eprintln!("__________________________________");
-                        // eprintln!("{}: {}", agent_id, response_content);
-                        // eprintln!("__________________________________");
-                        // eprintln!();
 
                         debug!(
                             "Sending response to message from '{}': '{}'",

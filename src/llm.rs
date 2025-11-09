@@ -16,7 +16,6 @@ use crate::cli::{AgentArgs, LLMBackend as CliBackend};
 /// Common LLM module for handling different backends
 pub struct LLMModule {
     provider: Box<dyn LLMProvider>,
-    tts: Option<Box<dyn LLMProvider>>,
     elevenlabs_client: Option<ElevenLabsClient>,
 }
 
@@ -40,23 +39,6 @@ impl LLMModule {
         if let Some(key) = args.get_api_key() {
             builder = builder.api_key(key);
         }
-
-        let tts = if args.voice {
-            let elevenlabs_api_key = std::env::var("ELEVENLABS_API_KEY")?;
-
-            debug!("Elevenlabs API key is set.");
-
-            Some(
-                LLMBuilder::new()
-                    .backend(LLMBackend::ElevenLabs)
-                    .api_key(elevenlabs_api_key)
-                    .model("eleven_turbo_v2_5")
-                    .voice("JBFqnCsd6RMkjVDRZzb")
-                    .build()?,
-            )
-        } else {
-            None
-        };
 
         let elevenlabs_client = if args.voice {
             Some(ElevenLabsClient::from_env().map_err(|e| anyhow!("ElevenLabsClient: {e}"))?)
@@ -90,7 +72,6 @@ impl LLMModule {
 
         Ok(Self {
             provider,
-            tts,
             elevenlabs_client,
         })
     }
@@ -106,19 +87,6 @@ impl LLMModule {
     pub fn create_user_message(&self, content: &str) -> ChatMessage {
         ChatMessage::user().content(content).build()
     }
-
-    // /// Save the response to mp3
-    // pub async fn save_to_mp3(&self, response: &str) -> Result<()> {
-    //     // Generate speech
-    //     let audio_data = match &self.tts {
-    //         Some(tts) => tts.speech(response).await?,
-    //         None => return Err(anyhow!("Tried to generate an mp3 but failed.")),
-    //     };
-
-    //     // Save the audio to a file
-    //     std::fs::write("output-speech-elevenlabs.mp3", audio_data)?;
-    //     Ok(())
-    // }
 
     pub async fn say(&self, response: &str) -> Result<()> {
         let body = TextToSpeechBody::new(response).with_model_id(Model::ElevenTurboV2_5);

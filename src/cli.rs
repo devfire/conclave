@@ -26,18 +26,6 @@ pub enum LLMBackend {
     Local,
 }
 
-impl std::fmt::Display for LLMBackend {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LLMBackend::OpenAI => write!(f, "openai"),
-            LLMBackend::Anthropic => write!(f, "anthropic"),
-            LLMBackend::Google => write!(f, "google"),
-            LLMBackend::OpenRouter => write!(f, "openrouter"),
-            LLMBackend::Local => write!(f, "local"),
-        }
-    }
-}
-
 /// Command-line arguments for the AI Agent Swarm
 #[derive(Parser, Debug)]
 #[command(
@@ -272,7 +260,7 @@ impl AgentArgs {
     /// Get the effective API key, checking environment variables if not provided
     pub fn get_api_key(&self) -> Option<String> {
         if let Some(key) = &self.api_key {
-            return Some(key.clone());
+            return Some(key.to_string());
         }
 
         // Check environment variables based on backend type
