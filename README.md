@@ -8,11 +8,96 @@ This project allows you to create a swarm of AI agents that can collaborate on t
 
 Agents can also be configured for voice responses using ElevenLabs integration and support structured debate scenarios.
 
+## Docker Support
+
+Conclave includes Docker support for easy deployment and containerized execution. You can run agents using Docker without needing to install Rust or other dependencies locally.
+
+### Building the Docker Image
+
+Build the Docker image from the project root:
+
+```sh
+docker build -t conclave .
+```
+
+### Running with Docker
+
+Run a single agent using Docker:
+
+```sh
+docker run --rm \
+    -e OPENAI_API_KEY=your_openai_key \
+    conclave \
+    --agent-id agent-1 \
+    --llm-backend openai \
+    --model gpt-4
+```
+
+Run multiple agents in separate containers:
+
+```sh
+# Terminal 1
+docker run --rm \
+    -e OPENAI_API_KEY=your_openai_key \
+    conclave \
+    --agent-id agent-1 \
+    --llm-backend openai \
+    --model gpt-4
+
+# Terminal 2
+docker run --rm \
+    -e ANTHROPIC_API_KEY=your_anthropic_key \
+    conclave \
+    --agent-id agent-2 \
+    --llm-backend anthropic \
+    --model claude-3-sonnet-20240229
+```
+
+For voice-enabled agents with Docker:
+
+```sh
+docker run --rm \
+    -e OPENAI_API_KEY=your_openai_key \
+    -e ELEVENLABS_API_KEY=your_elevenlabs_key \
+    conclave \
+    --agent-id agent-1 \
+    --llm-backend openai \
+    --model gpt-4 \
+    --voice
+```
+
+### Docker Compose (Optional)
+
+Create a `docker-compose.yml` file for easier multi-agent deployment:
+
+```yaml
+version: '3.8'
+services:
+  agent-1:
+    image: conclave
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    command: ["--agent-id", "agent-1", "--llm-backend", "openai", "--model", "gpt-4"]
+    
+  agent-2:
+    image: conclave
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    command: ["--agent-id", "agent-2", "--llm-backend", "anthropic", "--model", "claude-3-sonnet-20240229"]
+```
+
+Run with:
+
+```sh
+docker-compose up
+```
+
 ## Features
 
 - **Decentralized Communication:** Agents communicate via UDP multicast, eliminating the need for a central server.
 - **Pluggable LLM Backends:** Easily switch between different LLM providers, including OpenAI, Anthropic, Google, OpenRouter, and local models.
 - **Voice Integration:** Optional ElevenLabs text-to-speech (TTS) for voice responses. NOTE: Only ElevenLabs is supported for TTS.
+- **Docker Support:** Run agents in containers without local Rust installation.
 - **Configurable Agents:** Customize each agent's ID, personality (inline or file-based), and LLM model.
 - **Debate System:** Built-in support for structured Public Forum debates with predefined personality files for affirmative, negative, and judge roles.
 - **Resilient Networking:** The system is designed to be resilient to network errors and agent failures with retry logic.
@@ -80,7 +165,7 @@ cargo run --release -- \
     --llm-backend openai \
     --model gpt-4 \
     --api-key YOUR_OPENAI_API_KEY \
-    --personality-file src/affirmative.md
+    --personality-file src/personalities/affirmative.md
 ```
 
 ### Running Multiple Agents
@@ -150,9 +235,9 @@ You can also provide API keys via environment variables:
 
 Conclave includes built-in support for structured Public Forum debates. Use the provided personality files:
 
-- `src/affirmative.md` - For affirmative debaters
-- `src/neg.md` - For negative debaters
-- `src/debate_judge_prompt.md` - For debate judges
+- `src/personalities/affirmative.md` - For affirmative debaters
+- `src/personalities/negative.md` - For negative debaters
+- `src/personalities/debate_judge_prompt.md` - For debate judges
 
 Example debate setup:
 
@@ -163,7 +248,7 @@ cargo run --release -- \
     --llm-backend openai \
     --model gpt-4 \
     --api-key YOUR_OPENAI_API_KEY \
-    --personality-file src/affirmative.md
+    --personality-file src/personalities/affirmative.md
 
 # Negative debater
 cargo run --release -- \
@@ -171,7 +256,7 @@ cargo run --release -- \
     --llm-backend openai \
     --model gpt-4 \
     --api-key YOUR_OPENAI_API_KEY \
-    --personality-file src/neg.md
+    --personality-file src/personalities/negative.md
 
 # Judge
 cargo run --release -- \
@@ -179,7 +264,7 @@ cargo run --release -- \
     --llm-backend openai \
     --model gpt-4 \
     --api-key YOUR_OPENAI_API_KEY \
-    --personality-file src/debate_judge_prompt.md
+    --personality-file src/personalities/debate_judge_prompt.md
 ```
 
 ## Development
