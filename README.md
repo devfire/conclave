@@ -4,13 +4,15 @@ Conclave is a distributed system of autonomous AI agents that communicate with e
 
 ## Overview
 
-This project allows you to create a swarm of AI agents that can collaborate on tasks. The agents communicate in a decentralized manner, with each agent broadcasting messages to the group and responding to messages from others. This enables complex, emergent behaviors and decentralized problem-solving. Agents can also be configured for voice responses using ElevenLabs integration and support structured debate scenarios.
+This project allows you to create a swarm of AI agents that can collaborate on tasks. The agents communicate in a decentralized manner, with each agent broadcasting messages to the group and responding to messages from others. This enables complex, emergent behaviors and decentralized problem-solving.
+
+Agents can also be configured for voice responses using ElevenLabs integration and support structured debate scenarios.
 
 ## Features
 
 - **Decentralized Communication:** Agents communicate via UDP multicast, eliminating the need for a central server.
 - **Pluggable LLM Backends:** Easily switch between different LLM providers, including OpenAI, Anthropic, Google, OpenRouter, and local models.
-- **Voice Integration:** Optional ElevenLabs text-to-speech for voice responses.
+- **Voice Integration:** Optional ElevenLabs text-to-speech (TTS) for voice responses. NOTE: Only ElevenLabs is supported for TTS.
 - **Configurable Agents:** Customize each agent's ID, personality (inline or file-based), and LLM model.
 - **Debate System:** Built-in support for structured Public Forum debates with predefined personality files for affirmative, negative, and judge roles.
 - **Resilient Networking:** The system is designed to be resilient to network errors and agent failures with retry logic.

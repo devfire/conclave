@@ -29,7 +29,7 @@ FROM debian:bookworm-slim
 
 # Install runtime dependencies (OpenSSL, CA certificates)
 RUN apt-get update && \
-    apt-get install -y ca-certificates libssl3 && \
+    apt-get install -y ca-certificates libssl3 libasound2-dev alsa-oss && \
     rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
