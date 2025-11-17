@@ -1,0 +1,26 @@
+# Ignore Rust build artifacts
+/target/
+
+# Ignore Git-related files
+.git
+.gitignore
+.gitmodules
+
+# Ignore common development and editor-specific files/directories
+.vscode/
+.idea/
+*.swp
+*.bak
+*.log
+tmp/
+temp/
+
+# Ignore documentation and other non-essential files
+docs/
+README.md
+LICENSE
+CHANGELOG.md
+
+# Ignore the Dockerfile and .dockerignore itself to prevent unexpected behavior
+Dockerfile
+.dockerignore
