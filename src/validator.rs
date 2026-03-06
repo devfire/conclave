@@ -31,6 +31,7 @@ pub enum ValidationError {
 const MIN_KEY_LENGTH_OPENAI: usize = 20;
 const MIN_KEY_LENGTH_ANTHROPIC: usize = 20;
 const MIN_KEY_LENGTH_GOOGLE: usize = 10;
+const MIN_KEY_LENGTH_OPENROUTER: usize = 20;
 
 /// Validates that the LLM configuration in [`AgentArgs`] is usable before the
 /// provider is built.
@@ -88,6 +89,7 @@ pub fn validate_llm_access(args: &AgentArgs) -> Result<(), ValidationError> {
         LLMBackend::OpenAI => MIN_KEY_LENGTH_OPENAI,
         LLMBackend::Anthropic => MIN_KEY_LENGTH_ANTHROPIC,
         LLMBackend::Google => MIN_KEY_LENGTH_GOOGLE,
+        LLMBackend::OpenRouter => MIN_KEY_LENGTH_OPENROUTER,
         LLMBackend::Local => unreachable!(), // handled above
     };
 
@@ -209,9 +211,11 @@ mod tests {
             endpoint: None,
             timeout_seconds: 30,
             max_retries: 3,
-            verbose: 0,
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
+            personality_file: None,
+            processing_delay_ms: 5000,
+            voice: false,
         }
     }
 

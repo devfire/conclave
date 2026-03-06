@@ -26,6 +26,18 @@ pub enum LLMBackend {
     Local,
 }
 
+impl std::fmt::Display for LLMBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LLMBackend::OpenAI => write!(f, "openai"),
+            LLMBackend::Anthropic => write!(f, "anthropic"),
+            LLMBackend::Google => write!(f, "google"),
+            LLMBackend::OpenRouter => write!(f, "openrouter"),
+            LLMBackend::Local => write!(f, "local"),
+        }
+    }
+}
+
 /// Command-line arguments for the AI Agent Swarm
 #[derive(Parser, Debug)]
 #[command(
