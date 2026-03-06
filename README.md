@@ -230,6 +230,8 @@ You can also provide API keys via environment variables:
 -   **Google:** `google`
 -   **OpenRouter:** `openrouter`
 -   **Local (Ollama):** `local`
+-   **Openrouter** `openai`
+    -   NOTE: use this command for openrouter: `cargo run --release -- --agent-id agent_1 --llm-backend openai --api-key $OPENROUTER_API_KEY --model model_id --endpoint https://openrouter.ai/api/v1`
 
 ## Debate System
 
