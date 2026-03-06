@@ -46,6 +46,8 @@ impl Processor {
             let response_message =
                 AgentMessage::new(agent_id.clone(), format!("Hi, I am {agent_id}."));
 
+            info!("Bootstrapping conversation with initial message: '{}'", response_message.content);
+
             // Broadcast response via network manager
             network_manager.send_message(&response_message).await?;
 
