@@ -6,6 +6,7 @@ mod message;
 mod message_handler;
 mod network;
 mod processor;
+mod validator;
 use crate::{
     cli::AgentArgs, message_handler::MessageHandler, network::NetworkConfig, processor::Processor,
 };
@@ -42,6 +43,20 @@ async fn main() -> anyhow::Result<()> {
         "Starting agent '{}' with {} backend and model '{}'",
         args.agent_id, args.llm_backend, args.model
     );
+
+    // Validate LLM access (API key format) before building the provider
+    if let Err(e) = validator::validate_llm_access(&args) {
+        error!("LLM access validation failed: {}", e);
+        std::process::exit(1);
+    }
+    info!("LLM access format validation passed");
+
+    // Probe the LLM provider with a test message to verify the token works
+    if let Err(e) = validator::validate_llm_connection(&args).await {
+        error!("LLM connection validation failed: {}", e);
+        std::process::exit(1);
+    }
+    info!("LLM connection validation passed");
 
     // Initialize LLM module
     let llm_module = llm::LLMModule::new(&args)?;

@@ -39,6 +39,8 @@ impl Processor {
             // Bootstrap the conversation with a greeting message, otherwise everyone is waiting for the first message
             let response_message = AgentMessage::new(agent_id.clone(), "Hi".to_string());
 
+            info!("Bootstrapping conversation with initial message: '{}'", response_message.content);
+
             // Broadcast response via network manager
             network_manager
                 .send_message(&response_message)

@@ -50,9 +50,23 @@ impl LLMModule {
                 &args.personality
             });
 
-        // Set custom endpoint if provided
+        // Set custom endpoint if provided.
+        // The underlying `llm` crate uses `Url::join()` to append paths like
+        // "chat/completions" to the base URL.  `Url::join()` follows RFC 3986
+        // semantics: if the base path does NOT end with '/', the last segment
+        // is replaced instead of appended.  For example:
+        //   "https://openrouter.ai/api/v1" + "chat/completions"
+        //     → "https://openrouter.ai/api/chat/completions"   (WRONG)
+        //   "https://openrouter.ai/api/v1/" + "chat/completions"
+        //     → "https://openrouter.ai/api/v1/chat/completions" (CORRECT)
+        // We normalise here so users don't have to worry about trailing slashes.
         if let Some(url) = &args.endpoint {
-            builder = builder.base_url(url);
+            let normalised = if url.ends_with('/') {
+                url.clone()
+            } else {
+                format!("{}/", url)
+            };
+            builder = builder.base_url(&normalised);
         }
 
         let provider = builder.build()?;
