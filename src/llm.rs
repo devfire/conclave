@@ -20,7 +20,12 @@ pub struct LLMModule {
 }
 
 impl LLMModule {
-    /// Creates a new LLM module instance based on command-line arguments
+    /// Creates a new LLM module instance based on command-line arguments.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `ElevenLabs` client cannot be created, the personality
+    /// cannot be loaded, or the underlying LLM provider fails to build.
     pub fn new(args: &AgentArgs) -> Result<Self> {
         let mut builder = LLMBuilder::new();
 
@@ -49,7 +54,7 @@ impl LLMModule {
         // Get personality prompt (either from inline flag or file)
         let personality = args
             .get_personality()
-            .map_err(|e| anyhow!("Failed to load personality: {}", e))?;
+            .map_err(|e| anyhow!("Failed to load personality: {e}"))?;
 
         debug!("Personality: {}", personality);
 
@@ -77,7 +82,7 @@ impl LLMModule {
             let normalised = if url.ends_with('/') {
                 url.clone()
             } else {
-                format!("{}/", url)
+                format!("{url}/")
             };
             builder = builder.base_url(&normalised);
         }
@@ -90,18 +95,29 @@ impl LLMModule {
         })
     }
 
-    /// Generates a response based on the provided message history
+    /// Generates a response based on the provided message history.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the LLM provider fails to generate a chat response.
     pub async fn generate_llm_response(&self, messages: &[ChatMessage]) -> Result<String> {
         debug!("Sending {:?} messages.", messages);
         let response = self.provider.chat(messages).await?;
         Ok(response.to_string())
     }
 
-    /// Create a user ChatMessage from content
+    /// Create a user `ChatMessage` from content
+    #[must_use]
     pub fn create_user_message(&self, content: &str) -> ChatMessage {
         ChatMessage::user().content(content).build()
     }
 
+    /// Speak `response` via `ElevenLabs` text-to-speech when voice is enabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `ElevenLabs` client is unavailable, the TTS request
+    /// fails, or audio playback fails.
     pub async fn say(&self, response: &str) -> Result<()> {
         let body = TextToSpeechBody::new(response).with_model_id(Model::ElevenTurboV2_5);
 
@@ -111,12 +127,12 @@ impl LLMModule {
             elevenlabs
                 .hit(endpoint)
                 .await
-                .map_err(|e| anyhow!("Error: {}", e))?
+                .map_err(|e| anyhow!("Error: {e}"))?
         } else {
             return Err(anyhow!("Failed to hit the elevenlabs endpoint"));
         };
 
-        play(speech).map_err(|e| anyhow!("Error: {}", e))?;
+        play(speech).map_err(|e| anyhow!("Error: {e}"))?;
 
         Ok(())
     }

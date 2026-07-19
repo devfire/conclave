@@ -71,8 +71,8 @@ pub struct NetworkManager {
 }
 
 impl NetworkManager {
-    /// Create a new NetworkManager with the specified configuration
-    pub async fn new(config: NetworkConfig, agent_id: String) -> Result<Self, NetworkError> {
+    /// Create a new `NetworkManager` with the specified configuration
+    pub fn new(config: NetworkConfig, agent_id: String) -> Result<Self, NetworkError> {
         // Validate multicast address
         if !config.multicast_address.ip().is_multicast() {
             return Err(NetworkError::ConfigError(format!(
@@ -180,7 +180,7 @@ impl NetworkManager {
         let compressed_message = message
             .to_compressed(self.config.compression_threshold)
             .map_err(|e| {
-                NetworkError::ConfigError(format!("Failed to compress message: {}", e))
+                NetworkError::ConfigError(format!("Failed to compress message: {e}"))
             })?;
 
         // Serialize the compressed message using protobuf
@@ -250,7 +250,7 @@ impl NetworkManager {
         // above the compression threshold.
         let wire_message = AgentMessage::deserialize(datagram).map_err(|e| {
             let error_msg =
-                format!("Failed to deserialize message from {}: {}", sender_addr, e);
+                format!("Failed to deserialize message from {sender_addr}: {e}");
             tracing::warn!("{}", error_msg);
             NetworkError::DeserializationError(e)
         })?;
@@ -306,7 +306,7 @@ mod tests {
             compression_threshold: 1024,
         };
 
-        let result = NetworkManager::new(config, "test-agent".to_string()).await;
+        let result = NetworkManager::new(config, "test-agent".to_string());
         assert!(result.is_ok());
     }
 
@@ -319,7 +319,7 @@ mod tests {
             compression_threshold: 1024,
         };
 
-        let result = NetworkManager::new(config, "test-agent".to_string()).await;
+        let result = NetworkManager::new(config, "test-agent".to_string());
         assert!(result.is_err());
 
         if let Err(NetworkError::ConfigError(msg)) = result {
@@ -376,9 +376,7 @@ mod tests {
             compression_threshold: 1024,
         };
 
-        let manager = NetworkManager::new(config, "test-sender".to_string())
-            .await
-            .unwrap();
+        let manager = NetworkManager::new(config, "test-sender".to_string()).unwrap();
         let message = crate::message::AgentMessage::new(
             "test-sender".to_string(),
             "Hello, multicast world!".to_string(),
@@ -397,9 +395,7 @@ mod tests {
             compression_threshold: 1024,
         };
 
-        let manager = NetworkManager::new(config, "test-sender-empty".to_string())
-            .await
-            .unwrap();
+        let manager = NetworkManager::new(config, "test-sender-empty".to_string()).unwrap();
         let message =
             crate::message::AgentMessage::new("test-sender-empty".to_string(), "".to_string());
 
@@ -416,9 +412,7 @@ mod tests {
             compression_threshold: 1024,
         };
 
-        let manager = NetworkManager::new(config, "test-sender-unicode".to_string())
-            .await
-            .unwrap();
+        let manager = NetworkManager::new(config, "test-sender-unicode".to_string()).unwrap();
         let message = crate::message::AgentMessage::new(
             "test-sender-unicode".to_string(),
             "Hello 世界! 🌍".to_string(),
@@ -438,12 +432,8 @@ mod tests {
         };
 
         // Create sender and receiver
-        let sender = NetworkManager::new(config.clone(), "test-sender".to_string())
-            .await
-            .unwrap();
-        let receiver = NetworkManager::new(config, "test-receiver".to_string())
-            .await
-            .unwrap();
+        let sender = NetworkManager::new(config.clone(), "test-sender".to_string()).unwrap();
+        let receiver = NetworkManager::new(config, "test-receiver".to_string()).unwrap();
 
         let test_message = crate::message::AgentMessage::new(
             "test-sender".to_string(),
@@ -484,9 +474,7 @@ mod tests {
             compression_threshold: 1024,
         };
 
-        let manager = NetworkManager::new(config, "test-malformed".to_string())
-            .await
-            .unwrap();
+        let manager = NetworkManager::new(config, "test-malformed".to_string()).unwrap();
 
         // Send malformed data directly to the socket
         let malformed_data = vec![0xFF, 0xFF, 0xFF, 0xFF];
@@ -528,12 +516,9 @@ mod tests {
         };
 
         // Create sender and receiver
-        let sender = NetworkManager::new(config.clone(), "test-sender-compress".to_string())
-            .await
-            .unwrap();
-        let receiver = NetworkManager::new(config, "test-receiver-compress".to_string())
-            .await
-            .unwrap();
+        let sender =
+            NetworkManager::new(config.clone(), "test-sender-compress".to_string()).unwrap();
+        let receiver = NetworkManager::new(config, "test-receiver-compress".to_string()).unwrap();
 
         // Create a message that should be compressed (longer than threshold)
         let long_content = "This is a very long message that should definitely be compressed because it exceeds the compression threshold of 100 bytes. ".repeat(5);
@@ -578,12 +563,10 @@ mod tests {
         };
 
         // Create sender and receiver
-        let sender = NetworkManager::new(config.clone(), "test-sender-no-compress".to_string())
-            .await
-            .unwrap();
-        let receiver = NetworkManager::new(config, "test-receiver-no-compress".to_string())
-            .await
-            .unwrap();
+        let sender =
+            NetworkManager::new(config.clone(), "test-sender-no-compress".to_string()).unwrap();
+        let receiver =
+            NetworkManager::new(config, "test-receiver-no-compress".to_string()).unwrap();
 
         // Create a short message that should not be compressed
         let test_message = crate::message::AgentMessage::new(

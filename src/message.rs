@@ -50,14 +50,15 @@ pub mod compression {
 }
 
 impl AgentMessage {
-    /// Create a new AgentMessage with the current timestamp
+    /// Create a new `AgentMessage` with the current timestamp
     pub fn new(sender_id: String, content: String) -> Self {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect(
                 "Failed to get current time. Time to panic because this is a basic machine right.",
             )
-            .as_secs() as i64;
+            .as_secs()
+            .cast_signed();
 
         Self {
             sender_id,
@@ -99,7 +100,7 @@ impl AgentMessage {
         Ok(buf)
     }
 
-    /// Deserialize bytes to AgentMessage using protobuf
+    /// Deserialize bytes to `AgentMessage` using protobuf
     pub fn deserialize(bytes: &[u8]) -> Result<Self, prost::DecodeError> {
         Self::decode(bytes)
     }
@@ -269,7 +270,7 @@ pub struct CompressedAgentMessage {
 }
 
 impl CompressedAgentMessage {
-    /// Convert back to regular AgentMessage (decompress if needed)
+    /// Convert back to regular `AgentMessage` (decompress if needed)
     pub fn to_agent_message(&self) -> Result<AgentMessage, Box<dyn std::error::Error>> {
         let content = if self.is_compressed {
             compression::decompress_content(&self.compressed_data)?
