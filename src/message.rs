@@ -299,27 +299,4 @@ impl CompressedAgentMessage {
         };
         temp_message.serialize()
     }
-
-    /// Deserialize and create CompressedAgentMessage
-    pub fn deserialize(
-        bytes: &[u8],
-        is_compressed: bool,
-        original_size: usize,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let agent_message = AgentMessage::deserialize(bytes)?;
-
-        let compressed_data = if is_compressed {
-            STANDARD.decode(&agent_message.content)?
-        } else {
-            agent_message.content.as_bytes().to_vec()
-        };
-
-        Ok(CompressedAgentMessage {
-            sender_id: agent_message.sender_id,
-            timestamp: agent_message.timestamp,
-            compressed_data,
-            is_compressed,
-            original_size,
-        })
-    }
 }
