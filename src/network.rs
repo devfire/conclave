@@ -1,4 +1,5 @@
 use crate::message::{AgentMessage, CompressedAgentMessage};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{Ipv4Addr, SocketAddr};
 
@@ -211,73 +212,75 @@ impl NetworkManager {
         }
     }
 
-    /// Receive a single message from the multicast group
+    /// Receive a single message from the multicast group.
+    ///
+    /// # Concurrency
+    /// This method is safe to call concurrently from multiple tasks:
+    /// - `&self` receiver: no mutable aliasing of `NetworkManager`
+    /// - `UdpSocket::recv_from` takes `&self` and is internally synchronized by tokio
+    /// - The receive buffer is allocated fresh on each call (task-local), so there
+    ///   is no shared mutable state and no possibility of a data race.
     pub async fn receive_message(&self) -> Result<AgentMessage, NetworkError> {
+        // Task-local buffer: each concurrent call gets its own allocation.
         let mut buffer = vec![0u8; self.config.buffer_size];
 
-        match self.socket.recv_from(&mut buffer).await {
-            Ok((bytes_received, sender_addr)) => {
-                tracing::debug!(
-                    "Received {} bytes from {} on agent {}",
-                    bytes_received,
-                    sender_addr,
-                    self.agent_id
-                );
-
-                // Trim buffer to actual message size
-                buffer.truncate(bytes_received);
-
-                // First deserialize as AgentMessage to check if content is compressed
-                match AgentMessage::deserialize(&buffer) {
-                    Ok(temp_message) => {
-                        // Check if message content is base64 encoded (compressed)
-                        let is_compressed = temp_message.content.starts_with("H4") || // gzip base64 starts with H4
-                                           temp_message.content.starts_with("eJ"); // zlib base64 starts with eJ
-
-                        // Convert to CompressedAgentMessage and then to regular AgentMessage
-                        let compressed_message = CompressedAgentMessage::deserialize(
-                            &buffer,
-                            is_compressed,
-                            temp_message.content.len(),
-                        )
-                        .map_err(|e| {
-                            NetworkError::DeserializationError(prost::DecodeError::new(
-                                format!("Failed to deserialize compressed message: {}", e),
-                            ))
-                        })?;
-
-                        let message = compressed_message.to_agent_message().map_err(|e| {
-                            NetworkError::DeserializationError(prost::DecodeError::new(
-                                format!("Failed to decompress message: {}", e),
-                            ))
-                        })?;
-
-                        tracing::debug!(
-                            "Successfully deserialized message from agent {} (compressed: {}, original size: {}) with content: '{}'",
-                            message.sender_id,
-                            compressed_message.is_compressed,
-                            compressed_message.original_size,
-                            message.content.chars().take(50).collect::<String>()
-                        );
-                        Ok(message)
-                    }
-                    Err(e) => {
-                        let error_msg =
-                            format!("Failed to deserialize message from {}: {}", sender_addr, e);
-                        tracing::warn!("{}", error_msg);
-                        Err(NetworkError::DeserializationError(e))
-                    }
-                }
-            }
-            Err(e) => {
+        let (bytes_received, sender_addr) =
+            self.socket.recv_from(&mut buffer).await.map_err(|e| {
                 let error_msg = format!(
                     "Failed to receive message on agent {}: {}",
                     self.agent_id, e
                 );
                 tracing::error!("{}", error_msg);
-                Err(NetworkError::ReceiveError(error_msg))
+                NetworkError::ReceiveError(error_msg)
+            })?;
+
+        tracing::debug!(
+            "Received {} bytes from {} on agent {}",
+            bytes_received,
+            sender_addr,
+            self.agent_id
+        );
+
+        // Work on a slice of exactly the bytes received — no truncation of a
+        // shared buffer, no extra copies.
+        let datagram = &buffer[..bytes_received];
+
+        // Single protobuf decode; the wire format is always `AgentMessage`,
+        // where `content` holds base64-encoded compressed bytes for messages
+        // above the compression threshold.
+        let wire_message = AgentMessage::deserialize(datagram).map_err(|e| {
+            let error_msg =
+                format!("Failed to deserialize message from {}: {}", sender_addr, e);
+            tracing::warn!("{}", error_msg);
+            NetworkError::DeserializationError(e)
+        })?;
+
+        // Decode base64 + decompress if needed. The previous implementation
+        // sniffed content prefixes ("H4"/"eJ") which was fragile; instead try
+        // base64 decode + decompression and fall back to plain UTF-8 content.
+        let message = match STANDARD.decode(&wire_message.content) {
+            Ok(decoded) if !decoded.is_empty() => {
+                let compressed_message = CompressedAgentMessage {
+                    sender_id: wire_message.sender_id.clone(),
+                    timestamp: wire_message.timestamp,
+                    compressed_data: decoded,
+                    is_compressed: true,
+                    original_size: wire_message.content.len(),
+                };
+                compressed_message
+                    .to_agent_message()
+                    .unwrap_or(wire_message.clone())
             }
-        }
+            _ => wire_message.clone(),
+        };
+
+        tracing::debug!(
+            "Successfully deserialized message from agent {} with content: '{}'",
+            message.sender_id,
+            message.content.chars().take(50).collect::<String>()
+        );
+
+        Ok(message)
     }
 }
 
