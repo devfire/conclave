@@ -1,4 +1,4 @@
-use crate::{llm, message::AgentMessage, message_handler::MessageHandler, network};
+use crate::{llm, message::AgentMessage, message_handler::{MessageHandler, MessageReceiver}, network};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -34,8 +34,8 @@ impl Processor {
     pub async fn spawn_llm_processing_task(
         &self,
         llm_module: llm::LLMModule,
+        mut message_receiver: MessageReceiver,
     ) -> JoinHandle<Result<(), String>> {
-        let message_handler = Arc::clone(&self.message_handler);
         let network_manager = Arc::clone(&self.network_manager);
         let agent_id = self.agent_id.clone();
 
@@ -52,7 +52,7 @@ impl Processor {
             network_manager.send_message(&response_message).await?;
 
             loop {
-                match message_handler.receive_message().await {
+                match message_receiver.receive_message().await {
                     Ok(message) => {
                         debug!(
                             "LLM processing received message from '{}' with content: '{}'",

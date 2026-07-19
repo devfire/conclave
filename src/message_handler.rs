@@ -1,7 +1,6 @@
 use crate::message::AgentMessage;
-use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::mpsc;
 use tracing::{debug, error, warn};
 
 /// Message handler error types
@@ -14,19 +13,29 @@ pub enum MessageHandlerError {
     ChannelClosed,
 }
 
-/// Message handler that manages MPSC channel communication between UDP intake and LLM processing
+/// Sending half of the UDP intake → LLM processing channel.
+/// Safe to share across tasks (`Clone` / `Arc`).
+#[derive(Clone)]
 pub struct MessageHandler {
-    /// Agent ID for filtering self-messages
+    /// Agent ID for logging and identity
     agent_id: String,
     /// Sender for UDP intake thread to send messages to LLM processing thread
     message_sender: mpsc::Sender<AgentMessage>,
-    /// Receiver for LLM processing thread to receive messages
-    message_receiver: Arc<Mutex<mpsc::Receiver<AgentMessage>>>,
+}
+
+/// Receiving half of the channel. Must be owned by a single task (no `Mutex`).
+/// Holding a mutex across `recv().await` is deadlock-prone; exclusive ownership
+/// avoids that class of bug entirely.
+pub struct MessageReceiver {
+    /// Agent ID for filtering self-messages
+    agent_id: String,
+    /// Receiver for LLM processing thread
+    receiver: mpsc::Receiver<AgentMessage>,
 }
 
 impl MessageHandler {
-    /// Create a new MessageHandler with the specified agent ID and configuration
-    pub fn new(agent_id: String, buffer_size: usize) -> Self {
+    /// Create a new message channel pair with the specified agent ID and buffer size.
+    pub fn new(agent_id: String, buffer_size: usize) -> (Self, MessageReceiver) {
         let (sender, receiver) = mpsc::channel(buffer_size);
 
         debug!(
@@ -34,11 +43,16 @@ impl MessageHandler {
             agent_id, buffer_size
         );
 
-        Self {
-            agent_id,
-            message_sender: sender,
-            message_receiver: Arc::new(Mutex::new(receiver)),
-        }
+        (
+            Self {
+                agent_id: agent_id.clone(),
+                message_sender: sender,
+            },
+            MessageReceiver {
+                agent_id,
+                receiver,
+            },
+        )
     }
 
     /// Get the agent ID
@@ -74,14 +88,14 @@ impl MessageHandler {
             }
         }
     }
+}
 
-    /// Receive a message from the channel (used by LLM processing thread)
-    /// This method includes self-message filtering
-    pub async fn receive_message(&self) -> Result<AgentMessage, MessageHandlerError> {
-        let mut receiver = self.message_receiver.lock().await;
-
+impl MessageReceiver {
+    /// Receive a message from the channel (used by LLM processing thread).
+    /// Includes self-message filtering. No lock is held across `.await`.
+    pub async fn receive_message(&mut self) -> Result<AgentMessage, MessageHandlerError> {
         loop {
-            match receiver.recv().await {
+            match self.receiver.recv().await {
                 Some(message) => {
                     // Filter out self-messages to prevent self-replies
                     if message.sender_id == self.agent_id {
@@ -109,7 +123,6 @@ impl MessageHandler {
             }
         }
     }
-
 }
 
 #[cfg(test)]
@@ -119,7 +132,7 @@ mod tests {
     #[tokio::test]
     async fn test_channel_buffer_overflow() {
         // Create a message handler with a small buffer size
-        let handler = MessageHandler::new("overflow-agent".to_string(), 2);
+        let (handler, _receiver) = MessageHandler::new("overflow-agent".to_string(), 2);
 
         // Fill the buffer
         for i in 0..2 {
@@ -141,4 +154,28 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_receive_filters_self_messages() {
+        let (handler, mut receiver) = MessageHandler::new("me".to_string(), 8);
+
+        handler
+            .try_send_message(AgentMessage::new("me".to_string(), "echo".into()))
+            .unwrap();
+        handler
+            .try_send_message(AgentMessage::new("other".to_string(), "hello".into()))
+            .unwrap();
+
+        let msg = receiver.receive_message().await.unwrap();
+        assert_eq!(msg.sender_id, "other");
+        assert_eq!(msg.content, "hello");
+    }
+
+    #[tokio::test]
+    async fn test_receive_channel_closed() {
+        let (handler, mut receiver) = MessageHandler::new("me".to_string(), 1);
+        drop(handler);
+
+        let err = receiver.receive_message().await.unwrap_err();
+        assert!(matches!(err, MessageHandlerError::ChannelClosed));
+    }
 }
