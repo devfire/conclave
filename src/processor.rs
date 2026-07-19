@@ -31,7 +31,7 @@ impl Processor {
 
     /// Spawn LLM processing task for handling messages and generating responses
     /// This task receives messages from MPSC channel, filters self-messages, and generates LLM responses
-    pub async fn spawn_llm_processing_task(
+    pub fn spawn_llm_processing_task(
         &self,
         llm_module: llm::LLMModule,
         mut message_receiver: MessageReceiver,
@@ -87,7 +87,7 @@ impl Processor {
 
                         // Say it
                         match llm_module.say(&response_content).await {
-                            Ok(_) => info!("Speaking..."),
+                            Ok(()) => info!("Speaking..."),
                             Err(e) => error!("ElevenLabs error: {e}"),
                         }
 
@@ -105,7 +105,7 @@ impl Processor {
                     }
                     Err(e) => {
                         error!("Message channel error: {}", e);
-                        return Err(format!("LLM processing task failed: {}", e));
+                        return Err(format!("LLM processing task failed: {e}"));
                     }
                 }
             }
@@ -114,7 +114,7 @@ impl Processor {
 
     /// Spawn UDP message intake task for continuous message reception
     /// This task receives messages from UDP multicast and sends them to MPSC channel
-    pub async fn spawn_udp_intake_task(&self) -> JoinHandle<Result<(), String>> {
+    pub fn spawn_udp_intake_task(&self) -> JoinHandle<Result<(), String>> {
         let network_manager = Arc::clone(&self.network_manager);
         let message_handler = Arc::clone(&self.message_handler);
         let processing_delay_ms = self.processing_delay_ms;
@@ -138,8 +138,8 @@ impl Processor {
                         tokio::time::sleep(Duration::from_millis(processing_delay_ms)).await;
 
                         // Send message to MPSC channel (non-blocking)
-                        if let Err(e) = message_handler.try_send_message(message.clone()) {
-                            warn!("Failed to send message to channel: {}", e);
+                        if let Err(e) = message_handler.try_send_message(&message) {
+                            warn!("Failed to send message to channel: {e}");
                             // Continue processing other messages even if channel is full
                         } else {
                             debug!(
@@ -150,12 +150,11 @@ impl Processor {
                     }
                     Err(network::NetworkError::DeserializationError(e)) => {
                         // Log malformed messages but continue processing
-                        warn!("Received malformed message, skipping: {}", e);
-                        continue;
+                        warn!("Received malformed message, skipping: {e}");
                     }
                     Err(e) => {
-                        error!("UDP message reception error: {}", e);
-                        return Err(format!("UDP intake task failed: {}", e));
+                        error!("UDP message reception error: {e}");
+                        return Err(format!("UDP intake task failed: {e}"));
                     }
                 }
             }

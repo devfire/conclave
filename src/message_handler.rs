@@ -61,7 +61,7 @@ impl MessageHandler {
     }
 
     /// Try to send a message without blocking (used by UDP intake thread)
-    pub fn try_send_message(&self, message: AgentMessage) -> Result<(), MessageHandlerError> {
+    pub fn try_send_message(&self, message: &AgentMessage) -> Result<(), MessageHandlerError> {
         match self.message_sender.try_send(message.clone()) {
             Ok(()) => {
                 debug!(
@@ -95,32 +95,29 @@ impl MessageReceiver {
     /// Includes self-message filtering. No lock is held across `.await`.
     pub async fn receive_message(&mut self) -> Result<AgentMessage, MessageHandlerError> {
         loop {
-            match self.receiver.recv().await {
-                Some(message) => {
-                    // Filter out self-messages to prevent self-replies
-                    if message.sender_id == self.agent_id {
-                        debug!(
-                            "Filtered out self-message from agent '{}' with content: '{}'",
-                            message.sender_id,
-                            message.content.chars().take(50).collect::<String>()
-                        );
-                        continue; // Skip self-messages and continue receiving
-                    }
-
+            if let Some(message) = self.receiver.recv().await {
+                // Filter out self-messages to prevent self-replies
+                if message.sender_id == self.agent_id {
                     debug!(
-                        "Received message from '{}' for processing by agent '{}' with content: '{}'",
+                        "Filtered out self-message from agent '{}' with content: '{}'",
                         message.sender_id,
-                        self.agent_id,
                         message.content.chars().take(50).collect::<String>()
                     );
-                    return Ok(message);
+                    continue; // Skip self-messages and continue receiving
                 }
-                None => {
-                    let error_msg = format!("Message channel closed for agent '{}'", self.agent_id);
-                    error!("{}", error_msg);
-                    return Err(MessageHandlerError::ChannelClosed);
-                }
+
+                debug!(
+                    "Received message from '{}' for processing by agent '{}' with content: '{}'",
+                    message.sender_id,
+                    self.agent_id,
+                    message.content.chars().take(50).collect::<String>()
+                );
+                return Ok(message);
             }
+
+            let error_msg = format!("Message channel closed for agent '{}'", self.agent_id);
+            error!("{}", error_msg);
+            return Err(MessageHandlerError::ChannelClosed);
         }
     }
 }
@@ -136,15 +133,15 @@ mod tests {
 
         // Fill the buffer
         for i in 0..2 {
-            let message = AgentMessage::new("sender".to_string(), format!("Message {}", i));
-            let result = handler.try_send_message(message);
+            let message = AgentMessage::new("sender".to_string(), format!("Message {i}"));
+            let result = handler.try_send_message(&message);
             assert!(result.is_ok());
         }
 
         // Try to send one more message - should fail due to buffer full
         let overflow_message =
             AgentMessage::new("sender".to_string(), "Overflow message".to_string());
-        let overflow_result = handler.try_send_message(overflow_message);
+        let overflow_result = handler.try_send_message(&overflow_message);
         assert!(overflow_result.is_err());
 
         if let Err(MessageHandlerError::ChannelSendError(msg)) = overflow_result {
@@ -159,10 +156,10 @@ mod tests {
         let (handler, mut receiver) = MessageHandler::new("me".to_string(), 8);
 
         handler
-            .try_send_message(AgentMessage::new("me".to_string(), "echo".into()))
+            .try_send_message(&AgentMessage::new("me".to_string(), "echo".into()))
             .unwrap();
         handler
-            .try_send_message(AgentMessage::new("other".to_string(), "hello".into()))
+            .try_send_message(&AgentMessage::new("other".to_string(), "hello".into()))
             .unwrap();
 
         let msg = receiver.receive_message().await.unwrap();

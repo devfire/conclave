@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 /// Supported LLM backend types
 #[derive(Debug, Clone, ValueEnum)]
 pub enum LLMBackend {
-    /// OpenAI GPT models
+    /// `OpenAI` GPT models
     #[value(name = "openai")]
     OpenAI,
     /// Anthropic Claude models
@@ -17,7 +17,7 @@ pub enum LLMBackend {
     #[value(name = "google")]
     Google,
 
-    /// OpenRouter
+    /// `OpenRouter`
     #[value(name = "openrouter")]
     OpenRouter,
 
@@ -256,14 +256,13 @@ impl AgentArgs {
         }
 
         // Validate personality file can be read if specified
-        if let Some(ref file_path) = self.personality_file {
-            if let Err(e) = self.get_personality() {
-                return Err(format!(
-                    "Invalid personality file '{}': {}",
-                    file_path.to_string_lossy(),
-                    e
-                ));
-            }
+        if let Some(ref file_path) = self.personality_file
+            && let Err(e) = self.get_personality()
+        {
+            return Err(format!(
+                "Invalid personality file '{}': {e}",
+                file_path.to_string_lossy()
+            ));
         }
 
         Ok(())
@@ -272,7 +271,7 @@ impl AgentArgs {
     /// Get the effective API key, checking environment variables if not provided
     pub fn get_api_key(&self) -> Option<String> {
         if let Some(key) = &self.api_key {
-            return Some(key.to_string());
+            return Some(key.clone());
         }
 
         // Check environment variables based on backend type
