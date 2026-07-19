@@ -73,7 +73,9 @@ async fn main() -> anyhow::Result<()> {
 
     let buffer_size = 100; // Buffer up to 1000 messages
 
-    let message_handler = Arc::new(MessageHandler::new(args.agent_id.clone(), buffer_size));
+    let (message_handler, message_receiver) =
+        MessageHandler::new(args.agent_id.clone(), buffer_size);
+    let message_handler = Arc::new(message_handler);
     debug!("Message handler initialized with MPSC channel");
 
     let processor = Processor::new(
@@ -87,8 +89,10 @@ async fn main() -> anyhow::Result<()> {
     let udp_intake_handle = processor.spawn_udp_intake_task().await;
     info!("UDP message intake task spawned");
 
-    // Spawn LLM processing task
-    let llm_processing_handle = processor.spawn_llm_processing_task(llm_module).await;
+    // Spawn LLM processing task (exclusive owner of the channel receiver)
+    let llm_processing_handle = processor
+        .spawn_llm_processing_task(llm_module, message_receiver)
+        .await;
     info!("LLM processing task spawned");
 
     // Wait for tasks to complete (they run indefinitely)
