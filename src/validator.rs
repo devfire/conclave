@@ -214,7 +214,6 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            processing_delay_ms: 5000,
             voice: false,
         }
     }

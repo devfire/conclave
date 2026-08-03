@@ -11,7 +11,6 @@ pub struct Processor {
     message_handler: Arc<MessageHandler>,
     network_manager: Arc<network::NetworkManager>,
     agent_id: String,
-    processing_delay_ms: u64,
 }
 
 impl Processor {
@@ -19,13 +18,11 @@ impl Processor {
         message_handler: Arc<MessageHandler>,
         network_manager: Arc<network::NetworkManager>,
         agent_id: String,
-        processing_delay_ms: u64,
     ) -> Self {
         Self {
             message_handler,
             network_manager,
             agent_id,
-            processing_delay_ms,
         }
     }
 
@@ -119,7 +116,6 @@ impl Processor {
     pub fn spawn_udp_intake_task(&self) -> JoinHandle<Result<(), String>> {
         let network_manager = Arc::clone(&self.network_manager);
         let message_handler = Arc::clone(&self.message_handler);
-        let processing_delay_ms = self.processing_delay_ms;
 
         tokio::spawn(async move {
             info!(
@@ -135,9 +131,6 @@ impl Processor {
                             message.sender_id,
                             message.content.chars().take(50).collect::<String>()
                         );
-
-                        // Introduce an artificial delay to simulate processing time
-                        tokio::time::sleep(Duration::from_millis(processing_delay_ms)).await;
 
                         // Send message to MPSC channel (non-blocking)
                         if let Err(e) = message_handler.try_send_message(&message) {

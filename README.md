@@ -210,7 +210,6 @@ You can configure the agents using the following command-line arguments:
 | Log Level | | `--log-level` | Set the log level | `info` |
 | Personality | `-p` | `--personality` | Agent personality for the system prompt | `You are a helpful AI agent...` |
 | Personality File | | `--personality-file` | Read personality from file (mutually exclusive with --personality) | |
-| Processing Delay | | `--processing-delay` | Processing delay in milliseconds for simulation | `0` |
 | Voice | | `--voice` | Enable ElevenLabs voice responses | `false` |
 
 ### Environment Variables
