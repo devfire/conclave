@@ -62,8 +62,7 @@ async fn main() -> anyhow::Result<()> {
     let network_config = NetworkConfig {
         multicast_address: args.multicast_address,
         interface: args.interface.clone(),
-        buffer_size: 65536,          // 64KB buffer for better performance
-        compression_threshold: 1024, // Compress messages larger than 1KB
+        buffer_size: 65536, // 64KB buffer for better performance
     };
 
     // Initialize network manager
