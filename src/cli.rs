@@ -157,15 +157,6 @@ pub struct AgentArgs {
     )]
     pub personality_file: Option<PathBuf>,
 
-    /// Processing delay in milliseconds for simulated processing time
-    #[arg(
-        long = "processing-delay",
-        help = "Processing delay in milliseconds for simulating processing time",
-        default_value = "0",
-        value_name = "MILLISECONDS"
-    )]
-    pub processing_delay_ms: u64,
-
     /// lists test values
     #[arg(
         long = "voice",
@@ -250,11 +241,6 @@ impl AgentArgs {
             return Err("Model name cannot be empty".to_string());
         }
 
-        // Validate processing delay is reasonable
-        if self.processing_delay_ms > 60000 {
-            return Err("Processing delay cannot exceed 60 seconds".to_string());
-        }
-
         // Validate personality file can be read if specified
         if let Some(ref file_path) = self.personality_file
             && let Err(e) = self.get_personality()
@@ -304,7 +290,6 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            processing_delay_ms: 5000,
             voice: false,
         };
 
@@ -326,7 +311,6 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            processing_delay_ms: 5000,
             voice: false,
         };
 
@@ -349,7 +333,6 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            processing_delay_ms: 5000,
             voice: false,
         };
 
@@ -375,7 +358,6 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            processing_delay_ms: 5000,
             voice: false,
         };
 
@@ -402,7 +384,6 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            processing_delay_ms: 5000,
             voice: false,
         };
 

@@ -81,7 +81,6 @@ async fn main() -> anyhow::Result<()> {
         Arc::clone(&message_handler),
         Arc::clone(&network_manager),
         args.agent_id.clone(),
-        args.processing_delay_ms,
     );
 
     // Spawn UDP message intake task
