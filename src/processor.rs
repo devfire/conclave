@@ -80,11 +80,13 @@ impl Processor {
                         )
                         .await;
 
-                        let response_content = match llm_call_result {
-                            Ok(response) => response,
-                            Err(e) => e.to_string(),
-                        };
-
+			let response_content = match llm_call_result {
+    				Ok(response) => response,
+    				Err(e) => {
+        				error!("LLM call failed after retries, skipping response: {e}");
+        				continue;   // do NOT broadcast the error
+    				}
+			};
                         // Say it
                         match llm_module.say(&response_content).await {
                             Ok(()) => info!("Speaking..."),
