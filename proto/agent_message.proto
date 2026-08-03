@@ -5,5 +5,9 @@ package agent_swarm;
 message AgentMessage {
     string sender_id = 1;
     int64 timestamp = 2;
+    // Always base64-encoded gzip(payload). Every message is compressed on the
+    // wire, so the receiver can decompress unconditionally without any sniffing.
     string content = 3;
+    // Byte length of the uncompressed payload, for receive-side verification.
+    int64 original_size = 4;
 }

@@ -148,7 +148,7 @@ impl Processor {
                             );
                         }
                     }
-                    Err(network::NetworkError::DeserializationError(e)) => {
+                    Err(network::NetworkError::Message(e)) => {
                         // Log malformed messages but continue processing
                         warn!("Received malformed message, skipping: {e}");
                     }

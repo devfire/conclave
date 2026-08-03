@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn test_agent_args_validation_empty_agent_id() {
         let args = AgentArgs {
-            agent_id: "".to_string(),
+            agent_id: String::new(),
             multicast_address: "239.255.255.250:8080".parse().unwrap(),
             interface: None,
             llm_backend: LLMBackend::OpenAI,
