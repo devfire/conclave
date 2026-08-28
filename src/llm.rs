@@ -55,13 +55,17 @@ impl LLMModule {
 
         debug!("Personality: {}", personality);
 
-        // Configure common parameters
+        // Configure common parameters.
+        // No crate-managed memory: llm 1.3.4's ChatWithMemory appends every
+        // input message to its sliding window AND re-appends the input slice
+        // to the request, so each peer utterance reached the model twice
+        // (more under retries). The processor owns an explicit bounded
+        // history instead.
         builder = builder
             .model(&args.model)
             .timeout_seconds(args.timeout_seconds)
             .max_tokens(8192)
             .temperature(0.7)
-            .sliding_window_with_strategy(20, llm::memory::TrimStrategy::Summarize)
             // set the system message for the LLM to the personality prompt
             .system(&personality);
 
@@ -104,6 +108,12 @@ impl LLMModule {
     #[must_use]
     pub fn create_user_message(&self, content: &str) -> ChatMessage {
         ChatMessage::user().content(content).build()
+    }
+
+    /// Create an assistant `ChatMessage` from content
+    #[must_use]
+    pub fn create_assistant_message(&self, content: &str) -> ChatMessage {
+        ChatMessage::assistant().content(content).build()
     }
 
     /// Speak `response` through the configured text-to-speech engine.

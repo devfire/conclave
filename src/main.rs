@@ -1,15 +1,12 @@
 use clap::Parser;
 
-mod cli;
-pub mod llm;
-mod message;
-mod message_handler;
-mod network;
-mod processor;
-mod tts;
-mod validator;
-use crate::{
-    cli::AgentArgs, message_handler::MessageHandler, network::NetworkConfig, processor::Processor,
+use conclave::{
+    cli::AgentArgs,
+    llm,
+    message_handler::MessageHandler,
+    network::{self, NetworkConfig},
+    processor::Processor,
+    validator,
 };
 use std::sync::Arc;
 // We'll use the ChatMessage from the llm crate through our llm module

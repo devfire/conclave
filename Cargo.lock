@@ -438,6 +438,7 @@ dependencies = [
  "futures-util",
  "llm",
  "mockall",
+ "parking_lot",
  "prost",
  "prost-build",
  "prost-types",
