@@ -2,12 +2,6 @@
 
 Conclave is a distributed system of autonomous AI agents that communicate with each other using UDP multicast. Each agent operates independently with a pluggable LLM backend (OpenAI, Anthropic, Google, OpenRouter, or local models via Ollama) and a configurable personality system that supports both inline prompts and file-based personalities.
 
-## Overview
-
-This project allows you to create a swarm of AI agents that can collaborate on tasks. The agents communicate in a decentralized manner, with each agent broadcasting messages to the group and responding to messages from others. This enables complex, emergent behaviors and decentralized problem-solving.
-
-Agents can also be configured for voice responses using ElevenLabs or Deepgram Flux TTS — with a distinct voice per agent — and support structured debate scenarios.
-
 ## Features
 
 - **Decentralized Communication:** Agents communicate via UDP multicast, eliminating the need for a central server.
@@ -19,28 +13,6 @@ Agents can also be configured for voice responses using ElevenLabs or Deepgram F
 - **Resilient Networking:** The system is designed to be resilient to network errors and agent failures with retry logic.
 - **Concurrent Processing:** Agents can process messages and generate responses concurrently, enabling real-time interaction.
 - **Memory Management:** Sliding window strategy for conversation context management.
-
-## Getting Started
-
-### Prerequisites
-
-- Rust (latest stable version)
-- An API key for your chosen LLM provider (e.g., OpenAI, Anthropic, Google, OpenRouter)
-- Optional: ElevenLabs (`ELEVENLABS_API_KEY`) or Deepgram (`DEEPGRAM_API_KEY`) API key for voice responses
-- Optional: ALSA development libraries for audio playback (Linux)
-
-### Installation
-
-1.  Clone the repository:
-    ```sh
-    git clone https://github.com/your-username/conclave.git
-    cd conclave
-    ```
-
-2.  Build the project:
-    ```sh
-    cargo build --release
-    ```
 
 ## Usage
 
@@ -70,28 +42,9 @@ target/release/conclave --personality-file src/personalities/affirmative.md \
 
 ## Configuration
 
-You can configure the agents using the following command-line arguments:
-
-| Argument | Short | Long | Description | Default |
-| --- | --- | --- | --- | --- |
-| Agent ID | `-i` | `--agent-id` | Unique identifier for this agent | |
-| Multicast Address | `-a` | `--multicast-address` | UDP multicast address for communication | `239.255.255.250:8080` |
-| Network Interface | | `--interface` | Network interface to bind to | |
-| LLM Backend | `-b` | `--llm-backend` | LLM backend to use | `openai` |
-| Model | `-m` | `--model` | Specific LLM model to use | `gpt-3.5-turbo` |
-| API Key | `-k` | `--api-key` | API key for the LLM backend | |
-| Endpoint | | `--endpoint` | Custom API endpoint URL | |
-| Timeout | | `--timeout` | Request timeout in seconds | `30` |
-| Max Retries | | `--max-retries` | Maximum retry attempts for failed requests | `3` |
-| Log Level | | `--log-level` | Set the log level | `info` |
-| Personality | `-p` | `--personality` | Agent personality for the system prompt | `You are a helpful AI agent...` |
-| Personality File | | `--personality-file` | Read personality from file (mutually exclusive with --personality) | |
-| TTS | | `--tts` | Text-to-speech provider: `elevenlabs` \| `deepgram` (omit to disable voice) | |
-| TTS Voice | | `--tts-voice` | Voice for `--tts`: ElevenLabs voice id or Flux model string (e.g. `flux-haley-en`); requires `--tts` | provider default |
-
 ### Environment Variables
 
-You can also provide API keys via environment variables:
+You can provide API keys via environment variables:
 
 -   `OPENAI_API_KEY`
 -   `ANTHROPIC_API_KEY`
@@ -170,14 +123,6 @@ docker run --rm \
 ```
 
 ## Development
-
-### Running Tests
-
-To run the test suite, use the following command:
-
-```sh
-cargo test
-```
 
 ### Building the Protocol Buffers
 
