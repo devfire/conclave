@@ -39,6 +39,7 @@ target/release/conclave --personality-file src/personalities/affirmative.md \
                         --tts-voice flux-colin-en \
                         --llm-backend openrouter \
                         --model google/gemini-3.7-flash
+```
 
 ## Configuration
 
