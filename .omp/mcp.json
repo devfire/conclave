@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "deepgram": {
+      "type": "http",
+      "url": "https://api.dx.deepgram.com/kapa/mcp",
+      "auth": {
+        "type": "oauth",
+        "credentialId": "mcp_oauth:profile:default:https://api.dx.deepgram.com/kapa/mcp",
+        "tokenUrl": "https://id.dx.deepgram.com/token",
+        "clientId": "546b43c0-7b63-4ef2-9959-5587785368fb",
+        "resource": "https://api.dx.deepgram.com/kapa/mcp"
+      },
+      "oauth": {
+        "clientId": "546b43c0-7b63-4ef2-9959-5587785368fb"
+      }
+    }
+  }
+}
