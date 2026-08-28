@@ -33,6 +33,12 @@ async fn main() -> anyhow::Result<()> {
         .with_line_number(true)
         .init();
 
+    // Load `.env` from the working directory (or parents). Real environment
+    // variables take precedence over file values; a missing file is fine.
+    if let Err(e) = dotenvy::dotenv() {
+        debug!("No .env loaded: {e}");
+    }
+
     // Validate arguments
     if let Err(e) = args.validate() {
         error!("Error: {}", e);
