@@ -1,20 +1,11 @@
-//! Text-to-speech engines for spoken agent responses.
+//! Deepgram Flux TTS over the streaming `/v2/speak` WebSocket.
 //!
-//! Two engines are supported:
-//!
-//! - [`TtsEngine::Elevenlabs`] — ElevenLabs TTS.
-//! - [`TtsEngine::Deepgram`] — Deepgram Flux TTS over the streaming
-//!   `/v2/speak` WebSocket. Audio frames are played as they arrive, so a
-//!   spoken turn starts within ~200 ms instead of waiting for the whole clip
-//!   to synthesize.
-//!
-//! Each agent selects an engine and a voice on the command line, so multiple
-//! agents debating on one machine are distinguishable by voice.
+//! One connection is opened per spoken response: the full text is sent as a
+//! single `Speak`, the turn is closed with `Flush`, binary audio frames are
+//! appended to a rodio sink as they arrive, and the server's `SpeechMetadata`
+//! marks the end of the turn's audio.
 
 use anyhow::{Result, anyhow};
-use elevenlabs_rs::endpoints::genai::tts::{TextToSpeech, TextToSpeechBody};
-use elevenlabs_rs::utils::play;
-use elevenlabs_rs::{DefaultVoice, ElevenLabsClient, Model};
 use futures_util::{SinkExt, StreamExt};
 use rodio::OutputStream;
 use rodio::Sink;
@@ -25,8 +16,6 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tracing::{debug, warn};
-
-use crate::cli::TtsProvider as CliProvider;
 
 /// Deepgram Flux streaming endpoint; Flux voices are served only on `/v2/speak`.
 const DEEPGRAM_SPEAK_URL: &str = "wss://api.deepgram.com/v2/speak";
@@ -91,11 +80,6 @@ impl FluxVoice {
 }
 
 /// Deepgram Flux TTS over the streaming `/v2/speak` WebSocket.
-///
-/// One connection is opened per spoken response: the full text is sent as a
-/// single `Speak`, the turn is closed with `Flush`, binary audio frames are
-/// appended to a rodio sink as they arrive, and the server's `SpeechMetadata`
-/// marks the end of the turn's audio.
 pub struct DeepgramFluxTts {
     api_key: String,
     voice: FluxVoice,
@@ -252,68 +236,6 @@ fn decode_linear16(bytes: Vec<u8>) -> Vec<i16> {
         .chunks_exact(2)
         .map(|pair| i16::from_le_bytes([pair[0], pair[1]]))
         .collect()
-}
-
-/// A configured text-to-speech engine.
-pub enum TtsEngine {
-    /// ElevenLabs TTS with a voice id (premade name or UUID).
-    Elevenlabs {
-        client: ElevenLabsClient,
-        voice_id: String,
-    },
-    /// Deepgram Flux TTS over the streaming WebSocket.
-    Deepgram(DeepgramFluxTts),
-}
-
-impl TtsEngine {
-    /// Build the engine selected on the command line.
-    ///
-    /// `voice` overrides the provider's default voice: an ElevenLabs voice id
-    /// (e.g. `Brian`) or a Flux model string (e.g. `flux-haley-en`).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when provider credentials are missing or `voice` is
-    /// invalid for the provider.
-    pub fn from_args(provider: CliProvider, voice: Option<&str>) -> Result<Self> {
-        match provider {
-            CliProvider::Elevenlabs => {
-                let client =
-                    ElevenLabsClient::from_env().map_err(|e| anyhow!("ElevenLabsClient: {e}"))?;
-                let voice_id = match voice {
-                    Some(voice) => voice.to_string(),
-                    None => String::from(DefaultVoice::Brian),
-                };
-                Ok(Self::Elevenlabs { client, voice_id })
-            }
-            CliProvider::Deepgram => {
-                let voice = FluxVoice::new(voice.unwrap_or(DEFAULT_FLUX_VOICE))?;
-                Ok(Self::Deepgram(DeepgramFluxTts::new(voice)?))
-            }
-        }
-    }
-
-    /// Synthesize and play `text` aloud; returns when playback finishes.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when synthesis or audio playback fails.
-    pub async fn say(&self, text: &str) -> Result<()> {
-        match self {
-            Self::Elevenlabs { client, voice_id } => {
-                let endpoint = TextToSpeech::new(
-                    voice_id.clone(),
-                    TextToSpeechBody::new(text).with_model_id(Model::ElevenTurboV2_5),
-                );
-                let speech = client
-                    .hit(endpoint)
-                    .await
-                    .map_err(|e| anyhow!("ElevenLabs error: {e}"))?;
-                play(speech).map_err(|e| anyhow!("audio playback error: {e}"))
-            }
-            Self::Deepgram(tts) => tts.say(text).await,
-        }
-    }
 }
 
 #[cfg(test)]

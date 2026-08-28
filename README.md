@@ -8,91 +8,6 @@ This project allows you to create a swarm of AI agents that can collaborate on t
 
 Agents can also be configured for voice responses using ElevenLabs or Deepgram Flux TTS — with a distinct voice per agent — and support structured debate scenarios.
 
-## Docker Support
-
-Conclave includes Docker support for easy deployment and containerized execution. You can run agents using Docker without needing to install Rust or other dependencies locally.
-
-### Building the Docker Image
-
-Build the Docker image from the project root:
-
-```sh
-docker build -t conclave .
-```
-
-### Running with Docker
-
-Run a single agent using Docker:
-
-```sh
-docker run --rm \
-    -e OPENAI_API_KEY=your_openai_key \
-    conclave \
-    --agent-id agent-1 \
-    --llm-backend openai \
-    --model gpt-4
-```
-
-Run multiple agents in separate containers:
-
-```sh
-# Terminal 1
-docker run --rm \
-    -e OPENAI_API_KEY=your_openai_key \
-    conclave \
-    --agent-id agent-1 \
-    --llm-backend openai \
-    --model gpt-4
-
-# Terminal 2
-docker run --rm \
-    -e ANTHROPIC_API_KEY=your_anthropic_key \
-    conclave \
-    --agent-id agent-2 \
-    --llm-backend anthropic \
-    --model claude-3-sonnet-20240229
-```
-
-For voice-enabled agents with Docker:
-
-```sh
-docker run --rm \
-    -e OPENAI_API_KEY=your_openai_key \
-    -e DEEPGRAM_API_KEY=your_deepgram_key \
-    --device /dev/snd \
-    conclave \
-    --agent-id agent-1 \
-    --llm-backend openai \
-    --model gpt-4 \
-    --tts deepgram
-```
-
-### Docker Compose (Optional)
-
-Create a `docker-compose.yml` file for easier multi-agent deployment:
-
-```yaml
-version: '3.8'
-services:
-  agent-1:
-    image: conclave
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    command: ["--agent-id", "agent-1", "--llm-backend", "openai", "--model", "gpt-4"]
-    
-  agent-2:
-    image: conclave
-    environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-    command: ["--agent-id", "agent-2", "--llm-backend", "anthropic", "--model", "claude-3-sonnet-20240229"]
-```
-
-Run with:
-
-```sh
-docker-compose up
-```
-
 ## Features
 
 - **Decentralized Communication:** Agents communicate via UDP multicast, eliminating the need for a central server.
@@ -131,96 +46,27 @@ docker-compose up
 
 To run an agent, you need to provide a unique agent ID and specify the LLM backend and model to use.
 
-### Basic Example
-
-Run a single agent using the OpenAI backend:
-
-```sh
-cargo run --release -- \
-    --agent-id agent-1 \
-    --llm-backend openai \
-    --model gpt-4 \
-    --api-key YOUR_OPENAI_API_KEY
-```
-
-### Voice-Enabled Agent
-
-Run an agent with Deepgram Flux TTS voice responses (uses the streaming `/v2/speak` WebSocket; audio starts playing as it is synthesized):
-
-```sh
-DEEPGRAM_API_KEY=your_deepgram_key cargo run --release -- \
-    --agent-id agent-1 \
-    --llm-backend openai \
-    --model gpt-4 \
-    --api-key YOUR_OPENAI_API_KEY \
-    --tts deepgram
-```
-
-Or with ElevenLabs:
-
-```sh
-ELEVENLABS_API_KEY=your_elevenlabs_key cargo run --release -- \
-    --agent-id agent-1 \
-    --llm-backend openai \
-    --model gpt-4 \
-    --api-key YOUR_OPENAI_API_KEY \
-    --tts elevenlabs
-```
-
 ### Simultaneous Voice Debate
-
 Give each debating agent its own `--tts-voice` so listeners can tell speakers apart. Flux voices are Deepgram model strings like `flux-hannah-en` (see the [Flux voice catalog](https://developers.deepgram.com/docs/flux-tts/voices)):
 
 ```sh
 # Terminal 1 — affirmative, American female
-DEEPGRAM_API_KEY=your_deepgram_key cargo run --release -- \
-    --agent-id affirmative --llm-backend openai --model gpt-4 \
-    --personality-file src/personalities/affirmative.md \
-    --tts deepgram --tts-voice flux-hannah-en
+target/release/conclave --personality-file src/personalities/negative.md \
+                        --agent-id negative \
+                        --tts deepgram \
+                        --tts-voice flux-hannah-en \
+                        --llm-backend openrouter \
+                        --model google/gemini-3.7-flash
+```
 
+```sh
 # Terminal 2 — negative, British male
-DEEPGRAM_API_KEY=your_deepgram_key cargo run --release -- \
-    --agent-id negative --llm-backend anthropic --model claude-3-sonnet-20240229 \
-    --personality-file src/personalities/negative.md \
-    --tts deepgram --tts-voice flux-colin-en
-```
-
-### Debate Agent
-
-Run an agent configured for Public Forum debate (affirmative side):
-
-```sh
-cargo run --release -- \
-    --agent-id debater-1 \
-    --llm-backend openai \
-    --model gpt-4 \
-    --api-key YOUR_OPENAI_API_KEY \
-    --personality-file src/personalities/affirmative.md
-```
-
-### Running Multiple Agents
-
-To create a swarm, run multiple agents in separate terminal windows. Each agent must have a unique ID.
-
-**Terminal 1:**
-
-```sh
-cargo run --release -- \
-    --agent-id agent-1 \
-    --llm-backend openai \
-    --model gpt-4 \
-    --api-key YOUR_OPENAI_API_KEY
-```
-
-**Terminal 2:**
-
-```sh
-cargo run --release -- \
-    --agent-id agent-2 \
-    --llm-backend anthropic \
-    --model claude-3-sonnet-20240229 \
-    --api-key YOUR_ANTHROPIC_API_KEY
-```
+target/release/conclave --personality-file src/personalities/affirmative.md \
+                        --agent-id affirmative \
+                        --tts deepgram \
+                        --tts-voice flux-colin-en \
+                        --llm-backend openrouter \
+                        --model google/gemini-3.7-flash
 
 ## Configuration
 
@@ -254,6 +100,17 @@ You can also provide API keys via environment variables:
 -   `ELEVENLABS_API_KEY`
 -   `DEEPGRAM_API_KEY`
 
+#### `.env` File
+
+Instead of exporting variables in every shell, put them in a `.env` file in the project root (or a parent directory):
+
+```sh
+OPENAI_API_KEY=your_openai_key
+DEEPGRAM_API_KEY=your_deepgram_key
+```
+
+The file is loaded at startup via [dotenvy](https://crates.io/crates/dotenvy). Real environment variables take precedence over `.env` values, and a missing file is not an error. `.env` is gitignored, so keys stay out of version control.
+
 ## Supported LLM Backends
 
 -   **OpenAI:** `openai`
@@ -264,40 +121,52 @@ You can also provide API keys via environment variables:
 -   **Openrouter** `openai`
     -   NOTE: use this command for openrouter: `cargo run --release -- --agent-id agent_1 --llm-backend openai --api-key $OPENROUTER_API_KEY --model model_id --endpoint https://openrouter.ai/api/v1`
 
-## Debate System
+## Docker Support
 
-Conclave includes built-in support for structured Public Forum debates. Use the provided personality files:
+Conclave includes Docker support for easy deployment and containerized execution. You can run agents using Docker without needing to install Rust or other dependencies locally.
 
-- `src/personalities/affirmative.md` - For affirmative debaters
-- `src/personalities/negative.md` - For negative debaters
-- `src/personalities/debate_judge_prompt.md` - For debate judges
+### Building the Docker Image
 
-Example debate setup:
+Build the Docker image from the project root:
 
 ```sh
-# Affirmative debater
-cargo run --release -- \
-    --agent-id affirmative \
-    --llm-backend openai \
-    --model gpt-4 \
-    --api-key YOUR_OPENAI_API_KEY \
-    --personality-file src/personalities/affirmative.md
+docker build -t conclave .
+```
 
-# Negative debater
-cargo run --release -- \
-    --agent-id negative \
-    --llm-backend openai \
-    --model gpt-4 \
-    --api-key YOUR_OPENAI_API_KEY \
-    --personality-file src/personalities/negative.md
+### Running with Docker
 
-# Judge
-cargo run --release -- \
-    --agent-id judge \
+Run multiple agents in separate containers:
+
+```sh
+# Terminal 1
+docker run --rm \
+    -e OPENAI_API_KEY=your_openai_key \
+    conclave \
+    --agent-id agent-1 \
     --llm-backend openai \
-    --model gpt-4 \
-    --api-key YOUR_OPENAI_API_KEY \
-    --personality-file src/personalities/debate_judge_prompt.md
+    --model {INSERT_MODEL_NAME}
+
+# Terminal 2
+docker run --rm \
+    -e ANTHROPIC_API_KEY=your_anthropic_key \
+    conclave \
+    --agent-id agent-2 \
+    --llm-backend anthropic \
+    --model {INSERT_MODEL_NAME}
+```
+
+For voice-enabled agents with Docker:
+
+```sh
+docker run --rm \
+    -e OPENAI_API_KEY=your_openai_key \
+    -e DEEPGRAM_API_KEY=your_deepgram_key \
+    --device /dev/snd \
+    conclave \
+    --agent-id agent-1 \
+    --llm-backend openai \
+    --model google/gemini-3.7-flash\
+    --tts deepgram
 ```
 
 ## Development
