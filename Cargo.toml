@@ -23,6 +23,10 @@ flate2 = { version = "1.1", features = ["default"] }
 base64 = "0.22"
 tokio-retry = "0.3.0"
 elevenlabs_rs = "0.6.0"
+tokio-tungstenite = { version = "0.23", features = ["native-tls"] }
+futures-util = "0.3"
+rodio = "0.17"
+dotenvy = "0.15"
 alsa-sys = "0.3.1"
 alsa = "0.10.0"
 

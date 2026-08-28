@@ -6,7 +6,7 @@ Conclave is a distributed system of autonomous AI agents that communicate with e
 
 This project allows you to create a swarm of AI agents that can collaborate on tasks. The agents communicate in a decentralized manner, with each agent broadcasting messages to the group and responding to messages from others. This enables complex, emergent behaviors and decentralized problem-solving.
 
-Agents can also be configured for voice responses using ElevenLabs integration and support structured debate scenarios.
+Agents can also be configured for voice responses using ElevenLabs or Deepgram Flux TTS — with a distinct voice per agent — and support structured debate scenarios.
 
 ## Docker Support
 
@@ -58,12 +58,13 @@ For voice-enabled agents with Docker:
 ```sh
 docker run --rm \
     -e OPENAI_API_KEY=your_openai_key \
-    -e ELEVENLABS_API_KEY=your_elevenlabs_key \
+    -e DEEPGRAM_API_KEY=your_deepgram_key \
+    --device /dev/snd \
     conclave \
     --agent-id agent-1 \
     --llm-backend openai \
     --model gpt-4 \
-    --voice
+    --tts deepgram
 ```
 
 ### Docker Compose (Optional)
@@ -96,7 +97,7 @@ docker-compose up
 
 - **Decentralized Communication:** Agents communicate via UDP multicast, eliminating the need for a central server.
 - **Pluggable LLM Backends:** Easily switch between different LLM providers, including OpenAI, Anthropic, Google, OpenRouter, and local models.
-- **Voice Integration:** Optional ElevenLabs text-to-speech (TTS) for voice responses. NOTE: Only ElevenLabs is supported for TTS.
+- **Voice Integration:** Optional text-to-speech (TTS) for voice responses via ElevenLabs or Deepgram Flux TTS (streaming WebSocket), each agent speaking with its own configurable voice.
 - **Docker Support:** Run agents in containers without local Rust installation.
 - **Configurable Agents:** Customize each agent's ID, personality (inline or file-based), and LLM model.
 - **Debate System:** Built-in support for structured Public Forum debates with predefined personality files for affirmative, negative, and judge roles.
@@ -110,7 +111,7 @@ docker-compose up
 
 - Rust (latest stable version)
 - An API key for your chosen LLM provider (e.g., OpenAI, Anthropic, Google, OpenRouter)
-- Optional: ElevenLabs API key for voice responses
+- Optional: ElevenLabs (`ELEVENLABS_API_KEY`) or Deepgram (`DEEPGRAM_API_KEY`) API key for voice responses
 - Optional: ALSA development libraries for audio playback (Linux)
 
 ### Installation
@@ -144,7 +145,18 @@ cargo run --release -- \
 
 ### Voice-Enabled Agent
 
-Run an agent with ElevenLabs voice responses:
+Run an agent with Deepgram Flux TTS voice responses (uses the streaming `/v2/speak` WebSocket; audio starts playing as it is synthesized):
+
+```sh
+DEEPGRAM_API_KEY=your_deepgram_key cargo run --release -- \
+    --agent-id agent-1 \
+    --llm-backend openai \
+    --model gpt-4 \
+    --api-key YOUR_OPENAI_API_KEY \
+    --tts deepgram
+```
+
+Or with ElevenLabs:
 
 ```sh
 ELEVENLABS_API_KEY=your_elevenlabs_key cargo run --release -- \
@@ -152,7 +164,25 @@ ELEVENLABS_API_KEY=your_elevenlabs_key cargo run --release -- \
     --llm-backend openai \
     --model gpt-4 \
     --api-key YOUR_OPENAI_API_KEY \
-    --voice
+    --tts elevenlabs
+```
+
+### Simultaneous Voice Debate
+
+Give each debating agent its own `--tts-voice` so listeners can tell speakers apart. Flux voices are Deepgram model strings like `flux-hannah-en` (see the [Flux voice catalog](https://developers.deepgram.com/docs/flux-tts/voices)):
+
+```sh
+# Terminal 1 — affirmative, American female
+DEEPGRAM_API_KEY=your_deepgram_key cargo run --release -- \
+    --agent-id affirmative --llm-backend openai --model gpt-4 \
+    --personality-file src/personalities/affirmative.md \
+    --tts deepgram --tts-voice flux-hannah-en
+
+# Terminal 2 — negative, British male
+DEEPGRAM_API_KEY=your_deepgram_key cargo run --release -- \
+    --agent-id negative --llm-backend anthropic --model claude-3-sonnet-20240229 \
+    --personality-file src/personalities/negative.md \
+    --tts deepgram --tts-voice flux-colin-en
 ```
 
 ### Debate Agent
@@ -210,7 +240,8 @@ You can configure the agents using the following command-line arguments:
 | Log Level | | `--log-level` | Set the log level | `info` |
 | Personality | `-p` | `--personality` | Agent personality for the system prompt | `You are a helpful AI agent...` |
 | Personality File | | `--personality-file` | Read personality from file (mutually exclusive with --personality) | |
-| Voice | | `--voice` | Enable ElevenLabs voice responses | `false` |
+| TTS | | `--tts` | Text-to-speech provider: `elevenlabs` \| `deepgram` (omit to disable voice) | |
+| TTS Voice | | `--tts-voice` | Voice for `--tts`: ElevenLabs voice id or Flux model string (e.g. `flux-haley-en`); requires `--tts` | provider default |
 
 ### Environment Variables
 
@@ -221,6 +252,7 @@ You can also provide API keys via environment variables:
 -   `GEMINI_API_KEY`
 -   `OPENROUTER_API_KEY`
 -   `ELEVENLABS_API_KEY`
+-   `DEEPGRAM_API_KEY`
 
 ## Supported LLM Backends
 
