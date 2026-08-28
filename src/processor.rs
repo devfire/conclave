@@ -1,4 +1,9 @@
-use crate::{llm, message::AgentMessage, message_handler::{MessageHandler, MessageReceiver}, network};
+use crate::{
+    llm,
+    message::AgentMessage,
+    message_handler::{MessageHandler, MessageReceiver},
+    network,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -43,7 +48,10 @@ impl Processor {
             let response_message =
                 AgentMessage::new(agent_id.clone(), format!("Hi, I am {agent_id}."));
 
-            info!("Bootstrapping conversation with initial message: '{}'", response_message.content);
+            info!(
+                "Bootstrapping conversation with initial message: '{}'",
+                response_message.content
+            );
 
             // Broadcast response via network manager
             network_manager.send_message(&response_message).await?;
@@ -77,17 +85,17 @@ impl Processor {
                         )
                         .await;
 
-			let response_content = match llm_call_result {
-    				Ok(response) => response,
-    				Err(e) => {
-        				error!("LLM call failed after retries, skipping response: {e}");
-        				continue;   // do NOT broadcast the error
-    				}
-			};
+                        let response_content = match llm_call_result {
+                            Ok(response) => response,
+                            Err(e) => {
+                                error!("LLM call failed after retries, skipping response: {e}");
+                                continue; // do NOT broadcast the error
+                            }
+                        };
                         // Say it
                         match llm_module.say(&response_content).await {
                             Ok(()) => info!("Speaking..."),
-                            Err(e) => error!("ElevenLabs error: {e}"),
+                            Err(e) => error!("TTS error: {e}"),
                         }
 
                         debug!(

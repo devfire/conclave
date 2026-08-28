@@ -6,17 +6,15 @@ use llm::{
 };
 use tracing::debug;
 
-use elevenlabs_rs::endpoints::genai::tts::{TextToSpeech, TextToSpeechBody};
-use elevenlabs_rs::utils::play;
-use elevenlabs_rs::{DefaultVoice, ElevenLabsClient, Model};
-
 // Import project-specific types
-use crate::cli::{AgentArgs, LLMBackend as CliBackend};
+use crate::cli::AgentArgs;
+use crate::cli::LLMBackend as CliBackend;
+use crate::tts::TtsEngine;
 
 /// Common LLM module for handling different backends
 pub struct LLMModule {
     provider: Box<dyn LLMProvider>,
-    elevenlabs_client: Option<ElevenLabsClient>,
+    tts: Option<TtsEngine>,
 }
 
 impl LLMModule {
@@ -24,7 +22,7 @@ impl LLMModule {
     ///
     /// # Errors
     ///
-    /// Returns an error if the `ElevenLabs` client cannot be created, the personality
+    /// Returns an error if the TTS engine cannot be created, the personality
     /// cannot be loaded, or the underlying LLM provider fails to build.
     pub fn new(args: &AgentArgs) -> Result<Self> {
         let mut builder = LLMBuilder::new();
@@ -45,10 +43,9 @@ impl LLMModule {
             builder = builder.api_key(key);
         }
 
-        let elevenlabs_client = if args.voice {
-            Some(ElevenLabsClient::from_env().map_err(|e| anyhow!("ElevenLabsClient: {e}"))?)
-        } else {
-            None
+        let tts = match args.tts {
+            Some(provider) => Some(TtsEngine::from_args(provider, args.tts_voice.as_deref())?),
+            None => None,
         };
 
         // Get personality prompt (either from inline flag or file)
@@ -89,10 +86,7 @@ impl LLMModule {
 
         let provider = builder.build()?;
 
-        Ok(Self {
-            provider,
-            elevenlabs_client,
-        })
+        Ok(Self { provider, tts })
     }
 
     /// Generates a response based on the provided message history.
@@ -112,28 +106,16 @@ impl LLMModule {
         ChatMessage::user().content(content).build()
     }
 
-    /// Speak `response` via `ElevenLabs` text-to-speech when voice is enabled.
+    /// Speak `response` through the configured text-to-speech engine.
     ///
     /// # Errors
     ///
-    /// Returns an error if the `ElevenLabs` client is unavailable, the TTS request
-    /// fails, or audio playback fails.
+    /// Returns an error if voice is disabled or synthesis/playback fails.
     pub async fn say(&self, response: &str) -> Result<()> {
-        let body = TextToSpeechBody::new(response).with_model_id(Model::ElevenTurboV2_5);
-
-        let endpoint = TextToSpeech::new(DefaultVoice::Brian, body);
-
-        let speech = if let Some(elevenlabs) = &self.elevenlabs_client {
-            elevenlabs
-                .hit(endpoint)
-                .await
-                .map_err(|e| anyhow!("Error: {e}"))?
-        } else {
-            return Err(anyhow!("Failed to hit the elevenlabs endpoint"));
-        };
-
-        play(speech).map_err(|e| anyhow!("Error: {e}"))?;
-
-        Ok(())
+        let tts = self
+            .tts
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("voice is disabled: start with --tts <provider>"))?;
+        tts.say(response).await
     }
 }

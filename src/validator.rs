@@ -7,16 +7,22 @@ use llm::chat::ChatMessage;
 /// Errors that can occur during LLM access validation.
 #[derive(Debug, thiserror::Error)]
 pub enum ValidationError {
-    #[error("API key is required for the '{backend}' backend but was not provided. Set it via --api-key or the appropriate environment variable.")]
+    #[error(
+        "API key is required for the '{backend}' backend but was not provided. Set it via --api-key or the appropriate environment variable."
+    )]
     MissingApiKey { backend: String },
 
     #[error("API key for '{backend}' is empty or contains only whitespace.")]
     EmptyApiKey { backend: String },
 
-    #[error("API key for '{backend}' contains invalid characters (whitespace or control characters).")]
+    #[error(
+        "API key for '{backend}' contains invalid characters (whitespace or control characters)."
+    )]
     InvalidApiKeyFormat { backend: String },
 
-    #[error("API key for '{backend}' is suspiciously short ({length} characters). Expected at least {min_length} characters.")]
+    #[error(
+        "API key for '{backend}' is suspiciously short ({length} characters). Expected at least {min_length} characters."
+    )]
     ApiKeyTooShort {
         backend: String,
         length: usize,
@@ -75,10 +81,7 @@ pub fn validate_llm_access(args: &AgentArgs) -> Result<(), ValidationError> {
 
     // 3. Reject keys that contain spaces, newlines, or control characters.
     if api_key.chars().any(|c| c.is_whitespace() || c.is_control()) {
-        error!(
-            "API key for '{}' contains invalid characters",
-            backend_name
-        );
+        error!("API key for '{}' contains invalid characters", backend_name);
         return Err(ValidationError::InvalidApiKeyFormat {
             backend: backend_name,
         });
@@ -214,7 +217,8 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            voice: false,
+            tts: None,
+            tts_voice: None,
         }
     }
 
@@ -278,10 +282,7 @@ mod tests {
 
     #[test]
     fn valid_google_key_passes() {
-        let args = make_args(
-            LLMBackend::Google,
-            Some("AIzaSyA1234567890".to_string()),
-        );
+        let args = make_args(LLMBackend::Google, Some("AIzaSyA1234567890".to_string()));
         assert!(validate_llm_access(&args).is_ok());
     }
 }

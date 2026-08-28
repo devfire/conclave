@@ -38,6 +38,26 @@ impl std::fmt::Display for LLMBackend {
     }
 }
 
+/// Supported text-to-speech providers
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum TtsProvider {
+    /// ElevenLabs TTS
+    #[value(name = "elevenlabs")]
+    Elevenlabs,
+    /// Deepgram Flux TTS (streaming WebSocket, `/v2/speak`)
+    #[value(name = "deepgram")]
+    Deepgram,
+}
+
+impl std::fmt::Display for TtsProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TtsProvider::Elevenlabs => write!(f, "elevenlabs"),
+            TtsProvider::Deepgram => write!(f, "deepgram"),
+        }
+    }
+}
+
 /// Command-line arguments for the AI Agent Swarm
 #[derive(Parser, Debug)]
 #[command(
@@ -156,13 +176,23 @@ pub struct AgentArgs {
         conflicts_with = "personality"
     )]
     pub personality_file: Option<PathBuf>,
-
-    /// lists test values
+    /// Text-to-speech provider for spoken agent responses (omit to disable voice)
     #[arg(
-        long = "voice",
-        help = "true | false on whether to have speech or not",
+        long = "tts",
+        help = "Text-to-speech provider for spoken responses: elevenlabs | deepgram (omit to disable voice)",
+        value_enum,
+        value_name = "PROVIDER"
     )]
-    pub voice: bool,
+    pub tts: Option<TtsProvider>,
+
+    /// Voice used by the TTS provider
+    #[arg(
+        long = "tts-voice",
+        help = "Voice for --tts: ElevenLabs voice id (e.g. 'Brian') or Flux model string (e.g. 'flux-haley-en')",
+        requires = "tts",
+        value_name = "VOICE"
+    )]
+    pub tts_voice: Option<String>,
 }
 
 impl AgentArgs {
@@ -251,6 +281,15 @@ impl AgentArgs {
             ));
         }
 
+        // Validate the Flux model string early so a typo fails at startup,
+        // not mid-debate against the Deepgram API.
+        if self.tts == Some(TtsProvider::Deepgram)
+            && let Some(voice) = &self.tts_voice
+            && let Err(e) = crate::tts::FluxVoice::new(voice)
+        {
+            return Err(format!("Invalid --tts-voice for Deepgram: {e}"));
+        }
+
         Ok(())
     }
 
@@ -259,7 +298,6 @@ impl AgentArgs {
         if let Some(key) = &self.api_key {
             return Some(key.clone());
         }
-
         // Check environment variables based on backend type
         match self.llm_backend {
             LLMBackend::OpenAI => std::env::var("OPENAI_API_KEY").ok(),
@@ -290,7 +328,8 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            voice: false,
+            tts: None,
+            tts_voice: None,
         };
 
         assert!(args.validate().is_ok());
@@ -311,7 +350,8 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            voice: false,
+            tts: None,
+            tts_voice: None,
         };
 
         assert!(args.validate().is_err());
@@ -333,7 +373,8 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            voice: false,
+            tts: None,
+            tts_voice: None,
         };
 
         assert!(args.validate().is_err());
@@ -358,7 +399,8 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            voice: false,
+            tts: None,
+            tts_voice: None,
         };
 
         assert!(args.validate().is_err());
@@ -384,7 +426,8 @@ mod tests {
             log_level: "info".to_string(),
             personality: "You are a helpful AI agent.".to_string(),
             personality_file: None,
-            voice: false,
+            tts: None,
+            tts_voice: None,
         };
 
         assert_eq!(
@@ -397,7 +440,7 @@ mod tests {
     fn test_personality_file_mutual_exclusivity() {
         // This test verifies that clap's conflicts_with attribute works
         // When both flags are provided, clap will return an error
-        let result = AgentArgs::try_parse_from(&[
+        let result = AgentArgs::try_parse_from([
             "conclave",
             "--agent-id",
             "test-agent",
@@ -415,7 +458,7 @@ mod tests {
     #[test]
     fn test_personality_file_flag_alone() {
         // Test that only --personality-file flag works
-        let result = AgentArgs::try_parse_from(&[
+        let result = AgentArgs::try_parse_from([
             "conclave",
             "--agent-id",
             "test-agent",
@@ -436,7 +479,7 @@ mod tests {
     #[test]
     fn test_personality_inline_flag_alone() {
         // Test that only --personality flag works (default behavior)
-        let result = AgentArgs::try_parse_from(&[
+        let result = AgentArgs::try_parse_from([
             "conclave",
             "--agent-id",
             "test-agent",
@@ -453,11 +496,69 @@ mod tests {
     #[test]
     fn test_no_personality_flags() {
         // Test default behavior when neither flag is provided
-        let result = AgentArgs::try_parse_from(&["conclave", "--agent-id", "test-agent"]);
+        let result = AgentArgs::try_parse_from(["conclave", "--agent-id", "test-agent"]);
 
         assert!(result.is_ok());
         let args = result.unwrap();
         assert!(!args.personality.is_empty());
         assert_eq!(args.personality_file, None);
+    }
+
+    #[test]
+    fn test_tts_flags_parse() {
+        let args = AgentArgs::try_parse_from([
+            "conclave",
+            "--agent-id",
+            "test-agent",
+            "--tts",
+            "deepgram",
+            "--tts-voice",
+            "flux-hannah-en",
+        ])
+        .unwrap();
+
+        assert_eq!(args.tts, Some(TtsProvider::Deepgram));
+        assert_eq!(args.tts_voice.as_deref(), Some("flux-hannah-en"));
+        assert!(args.validate().is_ok());
+
+        // No --tts means voice disabled and validate still passes.
+        let args = AgentArgs::try_parse_from(["conclave", "--agent-id", "test-agent"]).unwrap();
+        assert_eq!(args.tts, None);
+        assert!(args.validate().is_ok());
+    }
+
+    #[test]
+    fn test_tts_voice_requires_tts() {
+        let result = AgentArgs::try_parse_from([
+            "conclave",
+            "--agent-id",
+            "test-agent",
+            "--tts-voice",
+            "flux-hannah-en",
+        ]);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("required arguments were not provided"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn test_deepgram_rejects_invalid_flux_voice() {
+        let args = AgentArgs::try_parse_from([
+            "conclave",
+            "--agent-id",
+            "test-agent",
+            "--tts",
+            "deepgram",
+            "--tts-voice",
+            "aura-2-thalia-en",
+        ])
+        .unwrap();
+
+        let err = args.validate().unwrap_err();
+        assert!(err.contains("Invalid --tts-voice for Deepgram"), "{err}");
     }
 }

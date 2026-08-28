@@ -469,10 +469,8 @@ mod tests {
 
         // Create a large message.
         let long_content = "This is a very long message that should definitely be compressed because it exceeds the compression threshold of 100 bytes. ".repeat(5);
-        let test_message = crate::message::AgentMessage::new(
-            "test-sender-compress".to_string(),
-            long_content,
-        );
+        let test_message =
+            crate::message::AgentMessage::new("test-sender-compress".to_string(), long_content);
 
         // Send message in a separate task
         let send_message = test_message.clone();

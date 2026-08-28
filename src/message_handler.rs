@@ -48,10 +48,7 @@ impl MessageHandler {
                 agent_id: agent_id.clone(),
                 message_sender: sender,
             },
-            MessageReceiver {
-                agent_id,
-                receiver,
-            },
+            MessageReceiver { agent_id, receiver },
         )
     }
 

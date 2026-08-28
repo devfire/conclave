@@ -6,6 +6,7 @@ mod message;
 mod message_handler;
 mod network;
 mod processor;
+mod tts;
 mod validator;
 use crate::{
     cli::AgentArgs, message_handler::MessageHandler, network::NetworkConfig, processor::Processor,
@@ -66,8 +67,10 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Initialize network manager
-    let network_manager =
-        Arc::new(network::NetworkManager::new(network_config, args.agent_id.clone())?);
+    let network_manager = Arc::new(network::NetworkManager::new(
+        network_config,
+        args.agent_id.clone(),
+    )?);
     info!("Network manager initialized successfully");
 
     let buffer_size = 100; // Buffer up to 1000 messages
@@ -88,8 +91,7 @@ async fn main() -> anyhow::Result<()> {
     info!("UDP message intake task spawned");
 
     // Spawn LLM processing task (exclusive owner of the channel receiver)
-    let llm_processing_handle =
-        processor.spawn_llm_processing_task(llm_module, message_receiver);
+    let llm_processing_handle = processor.spawn_llm_processing_task(llm_module, message_receiver);
     info!("LLM processing task spawned");
 
     // Wait for tasks to complete (they run indefinitely)
